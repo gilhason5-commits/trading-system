@@ -1,0 +1,26 @@
+{
+  "name": "trading-system",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Personal read-only trading & research system (MVP)",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @trading/web",
+    "build": "npm run build --workspace @trading/web",
+    "worker": "npm run start --workspace @trading/worker",
+    "pipeline:dry": "npm run pipeline:dry --workspace @trading/worker",
+    "mcp": "npm run start --workspace @trading/mcp",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}
