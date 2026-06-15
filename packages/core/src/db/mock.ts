@@ -20,8 +20,8 @@ import { buildSeed } from "./seed.ts";
 // In-memory repository seeded with deterministic data so the whole app runs
 // with no database and no API keys (the "build now, wire keys later" anchor).
 
-let id = 0;
-const nextId = (prefix: string) => `${prefix}_${(++id).toString(36)}`;
+// Unique ids that never collide with the hardcoded seed ids (tx_1, an_2, …).
+const nextId = (prefix: string) => `${prefix}_${crypto.randomUUID().slice(0, 8)}`;
 const now = () => new Date().toISOString();
 
 export class MockRepository implements Repository {
