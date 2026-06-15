@@ -5,6 +5,8 @@ import { z } from "zod";
 
 const schema = z.object({
   DATA_MODE: z.enum(["mock", "live"]).default("mock"),
+  /** Override the default Claude model for all pipeline calls (cost tuning). */
+  CLAUDE_MODEL: z.string().optional(),
 
   TWELVEDATA_API_KEY: z.string().optional(),
   FMP_API_KEY: z.string().optional(),

@@ -79,7 +79,7 @@ export class LiveClaude implements ClaudeClient {
   }
 
   async complete(opts: CompleteOptions): Promise<ClaudeResult> {
-    const model = opts.model ?? DEFAULT_MODEL;
+    const model = opts.model ?? getEnv().CLAUDE_MODEL ?? DEFAULT_MODEL;
     // Build params loosely so newer fields (output_config.effort) pass through
     // regardless of the pinned SDK's typings; the API consumes them.
     const params: Record<string, unknown> = {
