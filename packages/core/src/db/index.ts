@@ -1,22 +1,21 @@
 import { getEnv } from "../env.ts";
 import { MockRepository } from "./mock.ts";
 import type { Repository } from "./repository.ts";
+import { SupabaseRepository } from "./supabase.ts";
 
 export type { Repository } from "./repository.ts";
 export { MockRepository } from "./mock.ts";
 
 // Factory: Supabase when SUPABASE_URL is configured and DATA_MODE=live,
-// otherwise the in-memory mock. The Supabase impl lands in supabase.ts (Step 3+).
+// otherwise the in-memory mock.
 let instance: Repository | null = null;
 
 export function getRepository(): Repository {
   if (instance) return instance;
   const env = getEnv();
   if (env.DATA_MODE === "live" && env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY) {
-    // Lazy import once the Supabase implementation exists.
-    throw new Error(
-      "Supabase repository not wired yet — set DATA_MODE=mock until Step 3 lands supabase.ts",
-    );
+    instance = new SupabaseRepository(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+    return instance;
   }
   instance = new MockRepository();
   return instance;

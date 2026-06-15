@@ -32,3 +32,6 @@ npm-debug.log*
 coverage/
 .turbo/
 .vercel
+
+# playwright mcp artifacts
+.playwright-mcp/
