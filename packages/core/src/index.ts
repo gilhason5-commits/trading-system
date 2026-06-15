@@ -8,3 +8,4 @@ export type { Repository } from "./db/repository.ts";
 export * from "./portfolio.ts";
 export * from "./datasources/index.ts";
 export * from "./claude/index.ts";
+export * from "./pipeline/index.ts";
