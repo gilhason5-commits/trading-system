@@ -1,2 +1,7 @@
-// Datasource barrel. Twelve Data here now; FMP/Finnhub/YouTube/Apify/RSS land in Step 3.
+// Datasource barrel — all clients are interface + Mock + Live + factory.
 export * from "./twelvedata.ts";
+export * from "./fmp.ts";
+export * from "./finnhub.ts";
+export * from "./youtube.ts";
+export * from "./apify.ts";
+export * from "./rss.ts";

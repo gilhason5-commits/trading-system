@@ -102,9 +102,44 @@ export class LiveMarketData implements MarketDataSource {
     return j.rate;
   }
 
-  // Technicals fan-out (RSI/MACD/SMA) is built out in Step 3's datasource pass.
-  async getTechnicals(_symbol: string, _market: Market): Promise<Technicals> {
-    return DEFAULT_TECHNICALS;
+  async getTechnicals(symbol: string, market: Market): Promise<Technicals> {
+    const base: Record<string, string> = { symbol, interval: "1day" };
+    if (market === "TASE") base.mic_code = "XTAE";
+
+    const [rsiRes, macdRes, sma50Res, sma200Res] = await Promise.all([
+      fetch(this.q("/rsi", { ...base, time_period: "14" })),
+      fetch(this.q("/macd", { ...base, fast_period: "12", slow_period: "26", signal_period: "9" })),
+      fetch(this.q("/sma", { ...base, time_period: "50" })),
+      fetch(this.q("/sma", { ...base, time_period: "200" })),
+    ]);
+
+    if (!rsiRes.ok) throw new Error(`twelvedata rsi ${symbol}: HTTP ${rsiRes.status}`);
+    if (!macdRes.ok) throw new Error(`twelvedata macd ${symbol}: HTTP ${macdRes.status}`);
+    if (!sma50Res.ok) throw new Error(`twelvedata sma50 ${symbol}: HTTP ${sma50Res.status}`);
+    if (!sma200Res.ok) throw new Error(`twelvedata sma200 ${symbol}: HTTP ${sma200Res.status}`);
+
+    const rsiJ = (await rsiRes.json()) as { values?: Array<{ rsi?: string }>; message?: string; status?: string };
+    const macdJ = (await macdRes.json()) as { values?: Array<{ macd?: string; macd_signal?: string }>; message?: string; status?: string };
+    const sma50J = (await sma50Res.json()) as { values?: Array<{ sma?: string }>; message?: string; status?: string };
+    const sma200J = (await sma200Res.json()) as { values?: Array<{ sma?: string }>; message?: string; status?: string };
+
+    if (rsiJ.status === "error") throw new Error(`twelvedata rsi ${symbol}: ${rsiJ.message}`);
+    if (macdJ.status === "error") throw new Error(`twelvedata macd ${symbol}: ${macdJ.message}`);
+    if (sma50J.status === "error") throw new Error(`twelvedata sma50 ${symbol}: ${sma50J.message}`);
+    if (sma200J.status === "error") throw new Error(`twelvedata sma200 ${symbol}: ${sma200J.message}`);
+
+    const rsi = Number(rsiJ.values?.[0]?.rsi ?? 50);
+    const macd = Number(macdJ.values?.[0]?.macd ?? 0);
+    const macd_signal = Number(macdJ.values?.[0]?.macd_signal ?? 0);
+    const sma50 = Number(sma50J.values?.[0]?.sma ?? 0);
+    const sma200 = Number(sma200J.values?.[0]?.sma ?? 0);
+
+    // Trend: "up" when sma50 > sma200 (golden-cross structure), "down" when sma50 < sma200, else "flat"
+    const gap = sma200 > 0 ? (sma50 - sma200) / sma200 : 0;
+    const trend: "up" | "down" | "flat" =
+      gap > 0.005 ? "up" : gap < -0.005 ? "down" : "flat";
+
+    return { rsi, macd, macd_signal, sma50, sma200, trend };
   }
 }
 
