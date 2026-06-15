@@ -9,3 +9,5 @@ export * from "./portfolio.ts";
 export * from "./datasources/index.ts";
 export * from "./claude/index.ts";
 export * from "./pipeline/index.ts";
+export { getEmailSender, MockEmail, LiveResend } from "./email.ts";
+export type { EmailSender, EmailMessage } from "./email.ts";

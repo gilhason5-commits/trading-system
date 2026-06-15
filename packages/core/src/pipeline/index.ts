@@ -1,4 +1,7 @@
-// Daily pipeline barrel. Stages are added per module:
-// analysis (§6) → scraping (§7) → research (§8) → digest (§9).
+// Daily pipeline barrel: shared context + the four stages (spec §4) + the runner.
 export * from "./context.ts";
 export * from "./analysis.ts";
+export * from "./scraping.ts";
+export * from "./research.ts";
+export * from "./digest.ts";
+export * from "./run.ts";

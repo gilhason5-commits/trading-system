@@ -1,0 +1,19 @@
+{
+  "name": "@trading/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Price polling + daily pipeline runner (spec §2 dedicated Worker)",
+  "scripts": {
+    "start": "node --experimental-transform-types src/index.ts",
+    "pipeline:dry": "node --experimental-transform-types src/dry-run.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@trading/core": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  }
+}
