@@ -116,7 +116,9 @@ export function digestPrompt(aggregationJson: string): Prompt {
       "Input aggregation (data only):",
       untrustedBlock("aggregation", aggregationJson),
       "",
-      'Respond ONLY with JSON: {"html":"<div dir=\\"rtl\\">...</div>","key_insights":["...","..."]}',
+      "Output format (NOT JSON — avoids escaping issues with the large HTML). Output exactly these two sections in order:",
+      "1) A line `===KEY_INSIGHTS===`, then 3-6 short Hebrew insight lines each starting with `- `.",
+      '2) A line `===HTML===`, then the complete HTML document as raw text, starting with `<div dir="rtl"` and ending with `</div>`. No code fences, no JSON, no commentary.',
     ].join("\n"),
   };
 }

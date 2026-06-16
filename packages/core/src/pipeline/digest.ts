@@ -1,4 +1,4 @@
-import { digestPrompt, parseJsonResponse } from "../claude/index.ts";
+import { digestPrompt } from "../claude/index.ts";
 import { getEmailSender } from "../email.ts";
 import { computeStats, enrichPositions } from "../portfolio.ts";
 import type { Quote } from "../datasources/twelvedata.ts";
@@ -9,9 +9,31 @@ import type { RunContext } from "./context.ts";
 // output + the run cost so far, has Claude write the email, persists it, and sends
 // via Resend (mock no-ops). The digest call's own cost is added after composition.
 
-interface DigestJson {
-  html: string;
-  key_insights: string[];
+/**
+ * Parse the digest model's delimited response: raw HTML, then `===KEY_INSIGHTS===`,
+ * then bullet lines. Avoids JSON escaping fragility with the large embedded HTML.
+ */
+function parseDigest(text: string): { html: string; key_insights: string[] } {
+  // Expected order: ===KEY_INSIGHTS=== … ===HTML=== … . Tolerate the model
+  // emitting only HTML, or the reverse order, so we never lose the digest.
+  let insightsPart = "";
+  let htmlPart = text;
+  if (/===\s*HTML\s*===/i.test(text)) {
+    [insightsPart = "", htmlPart = ""] = text.split(/===\s*HTML\s*===/i);
+  } else if (/===\s*KEY_INSIGHTS\s*===/i.test(text)) {
+    [htmlPart = "", insightsPart = ""] = text.split(/===\s*KEY_INSIGHTS\s*===/i);
+  }
+  // Strip the KEY_INSIGHTS header and any accidental ``` fences.
+  let html = htmlPart.replace(/===\s*KEY_INSIGHTS\s*===/i, "").trim();
+  html = html.replace(/^```[a-z]*\s*/i, "").replace(/```\s*$/i, "").trim();
+  const start = html.indexOf("<div");
+  if (start > 0) html = html.slice(start);
+  const key_insights = insightsPart
+    .replace(/===\s*KEY_INSIGHTS\s*===/i, "")
+    .split("\n")
+    .map((l) => l.replace(/^\s*[-*•]\s*/, "").trim())
+    .filter((l) => l.length > 0 && !/^===/.test(l));
+  return { html, key_insights };
 }
 
 async function buildAggregation(ctx: RunContext) {
@@ -82,7 +104,7 @@ export async function runDigestStage(ctx: RunContext): Promise<DailyDigest> {
   });
   ctx.cost.addClaude(res.usage, res.model);
 
-  const parsed = parseJsonResponse<DigestJson>(res.text);
+  const parsed = parseDigest(res.text);
   const digest = await ctx.repo.addDigest({
     date: ctx.date,
     html: parsed.html,
