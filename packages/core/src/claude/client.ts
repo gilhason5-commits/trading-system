@@ -89,7 +89,10 @@ export class LiveClaude implements ClaudeClient {
       system: [{ type: "text", text: opts.system, cache_control: { type: "ephemeral" } }],
       messages: [{ role: "user", content: opts.user }],
     };
-    if (opts.effort) params.output_config = { effort: opts.effort };
+    // `effort` is only supported on Opus 4.5+, Sonnet 4.6, Fable 5 (not Haiku/older).
+    if (opts.effort && /opus-4-[5-9]|sonnet-4-6|fable-5/.test(model)) {
+      params.output_config = { effort: opts.effort };
+    }
 
     const res = (await this.sdk.messages.create(
       params as unknown as Anthropic.MessageCreateParamsNonStreaming,
