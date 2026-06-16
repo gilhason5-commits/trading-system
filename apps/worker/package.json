@@ -5,8 +5,8 @@
   "type": "module",
   "description": "Price polling + daily pipeline runner (spec §2 dedicated Worker)",
   "scripts": {
-    "start": "node --experimental-transform-types src/index.ts",
-    "pipeline:dry": "node --experimental-transform-types src/dry-run.ts",
+    "start": "node --env-file-if-exists=../../.env.local --experimental-transform-types src/index.ts",
+    "pipeline:dry": "node --env-file-if-exists=../../.env.local --experimental-transform-types src/dry-run.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

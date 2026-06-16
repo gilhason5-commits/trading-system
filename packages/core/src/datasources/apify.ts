@@ -171,8 +171,11 @@ export class LiveSocial implements SocialSource {
   async fetchInstagram(handle: string): Promise<SocialPost[]> {
     // Public logged-out scraping only — username without @
     const username = handle.startsWith("@") ? handle.slice(1) : handle;
+    // directUrls + resultsType is the actor's supported input; `usernames` returns
+    // no items. Logged-out scraping = posts only (stories require an IG login).
     const runId = await this.runActor(ACTOR_INSTAGRAM, {
-      usernames: [username],
+      directUrls: [`https://www.instagram.com/${username}/`],
+      resultsType: "posts",
       resultsLimit: 10,
     });
     const datasetId = await this.pollRun(runId);

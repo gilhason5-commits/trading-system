@@ -5,7 +5,7 @@
   "type": "module",
   "description": "MCP server exposing the trading system's scraping pipeline as tools",
   "scripts": {
-    "start": "node --experimental-transform-types src/server.ts",
+    "start": "node --env-file-if-exists=../../.env.local --experimental-transform-types src/server.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
