@@ -12,6 +12,13 @@ interface SignalJson {
   claim: string;
 }
 
+// Broad indices / macro instruments — recorded as signals but not turned into
+// stock "recommendations" (they're market commentary, not actionable picks).
+const NON_STOCK = new Set([
+  "SPY", "QQQ", "IWM", "DIA", "VOO", "VTI", "SPX", "NDX", "RUT", "IXIC",
+  "DXY", "VIX", "TLT", "CL", "WTI", "GLD", "SLV", "UVXY", "SQQQ", "TQQQ",
+]);
+
 // Only consider content published in the last 24h (fresh content per daily run).
 const RECENCY_MS = 24 * 60 * 60 * 1000;
 function isRecent(publishedAt: string): boolean {
@@ -65,8 +72,8 @@ export async function runScrapingStage(
             const signal = await ctx.repo.addSignal({ post_id: post.id, ticker, sentiment, claim });
             newSignals.push(signal);
 
-            // Upsert lead for tickers not in the held portfolio
-            if (!heldTickers.has(ticker.toUpperCase())) {
+            // Upsert lead for real stocks not already held (skip indices/macro).
+            if (!heldTickers.has(ticker.toUpperCase()) && !NON_STOCK.has(ticker.toUpperCase())) {
               const existing = await ctx.repo.getLeadByTicker(ticker);
               const lead = await ctx.repo.upsertLead({
                 ticker,

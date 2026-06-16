@@ -122,24 +122,26 @@ export class LiveYouTube implements YouTubeSource {
   }
 
   async getCaptions(videoId: string): Promise<string | null> {
-    // Use the unofficial timedtext endpoint — returns null when captions are absent
-    // so the caller can fall back to Apify/Whisper transcription.
+    // YouTube now signs caption URLs, so free fetches usually return empty.
+    // Fall back to an Apify transcript actor (works for auto-captions incl. Hebrew).
+    const token = getEnv().APIFY_TOKEN;
+    if (!token) return null;
     try {
-      const url = `https://www.youtube.com/api/timedtext?lang=en&v=${videoId}&fmt=vtt`;
-      const res = await fetch(url);
+      const res = await fetch(
+        `https://api.apify.com/v2/acts/pintostudio~youtube-transcript-scraper/run-sync-get-dataset-items?token=${token}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ videoUrl: `https://www.youtube.com/watch?v=${videoId}` }),
+        },
+      );
       if (!res.ok) return null;
-      const text = await res.text();
-      if (!text || text.trim().length === 0) return null;
-      // Strip VTT cue headers and timing lines, return plain text
-      const lines = text.split("\n").filter((line) => {
-        if (line.startsWith("WEBVTT")) return false;
-        if (/^\d{2}:\d{2}/.test(line)) return false;
-        if (/^-->/.test(line)) return false;
-        if (line.trim() === "") return false;
-        return true;
-      });
-      const plain = lines.join(" ").trim();
-      return plain.length > 0 ? plain : null;
+      const items = (await res.json()) as Array<{ data?: Array<{ text?: string }>; transcript?: string }>;
+      const first = items?.[0];
+      const text = Array.isArray(first?.data)
+        ? first!.data.map((s) => s.text ?? "").join(" ").trim()
+        : (first?.transcript ?? "").trim();
+      return text ? text.slice(0, 12000) : null; // cap to bound signal-extraction cost
     } catch {
       return null;
     }

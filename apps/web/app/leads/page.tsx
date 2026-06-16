@@ -1,4 +1,4 @@
-import { getRepository, type Post, type Signal, type Source } from "@trading/core";
+import { getRepository, type Post, type Recommendation, type Signal, type Source } from "@trading/core";
 
 export const dynamic = "force-dynamic";
 
@@ -9,7 +9,6 @@ const STATUS_LABEL: Record<string, string> = {
   dismissed: "נדחה",
 };
 
-/** Classify where a signal came from, in Hebrew, from its source + post id. */
 function discoveryType(platform: string, externalId: string): string {
   switch (platform) {
     case "youtube":
@@ -53,6 +52,16 @@ function buildTrail(
   return items;
 }
 
+/** A composite quality score for ranking recommendations (objective-weighted). */
+function quality(r: Recommendation): number {
+  const base = r.system_score * 0.6 + r.social_score * 0.4;
+  return r.manipulation_flag ? base - 100 : base; // push flagged ones to the bottom
+}
+
+function distinctSources(items: TrailItem[]): string[] {
+  return [...new Set(items.map((i) => i.handle).filter((h) => h && h !== "—"))];
+}
+
 function ScoreBar({ label, value }: { label: string; value: number }) {
   return (
     <div>
@@ -61,51 +70,26 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
         <span>{value}</span>
       </div>
       <div className="mt-1 h-2 overflow-hidden rounded bg-[var(--background)]">
-        <div className="h-full bg-[var(--pos)]" style={{ width: `${value}%` }} />
+        <div className="h-full bg-[var(--pos)]" style={{ width: `${Math.max(0, Math.min(100, value))}%` }} />
       </div>
     </div>
   );
 }
 
-function Trail({ items, verified }: { items: TrailItem[]; verified: string[] }) {
+function TrailList({ items }: { items: TrailItem[] }) {
+  if (items.length === 0) return <div className="text-sm text-[var(--muted)]">—</div>;
   return (
-    <div className="mt-3 space-y-2 rounded-md border border-[var(--border)] bg-[var(--background)] p-3">
-      <div className="text-xs font-semibold text-[var(--muted)]">מסלול החשיבה</div>
-
-      <div>
-        <div className="text-xs text-[var(--muted)]">מאיפה הגיע:</div>
-        {items.length === 0 ? (
-          <div className="text-sm text-[var(--muted)]">—</div>
-        ) : (
-          <ul className="mt-1 space-y-1">
-            {items.map((it, i) => (
-              <li key={i} className="text-sm">
-                <span>{it.type}</span> ·{" "}
-                <a href={it.url} target="_blank" rel="noreferrer" className="font-semibold hover:underline">
-                  {it.handle}
-                </a>
-                {it.claim && <span className="text-[var(--muted)]"> — “{it.claim}”</span>}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      <div>
-        <div className="text-xs text-[var(--muted)]">איפה אומת:</div>
-        {verified.length === 0 ? (
-          <div className="text-sm text-[var(--muted)]">—</div>
-        ) : (
-          <div className="mt-1 flex flex-wrap gap-1.5">
-            {verified.map((v, i) => (
-              <span key={i} className="rounded bg-[var(--surface)] px-2 py-0.5 text-xs">
-                ✓ {v}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
+    <ul className="mt-1 space-y-1">
+      {items.map((it, i) => (
+        <li key={i} className="text-sm">
+          <span>{it.type}</span> ·{" "}
+          <a href={it.url} target="_blank" rel="noreferrer" className="font-semibold hover:underline">
+            {it.handle}
+          </a>
+          {it.claim && <span className="text-[var(--muted)]"> — “{it.claim}”</span>}
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -121,75 +105,116 @@ export default async function LeadsPage() {
   const postsById = new Map(posts.map((p) => [p.id, p]));
   const sourcesById = new Map(sources.map((s) => [s.id, s]));
 
+  // Only verified recommendations, ranked best → worst.
+  const verified = recommendations
+    .filter((r) => (r.verified_sources ?? []).length > 0)
+    .sort((a, b) => quality(b) - quality(a));
+
+  // Cross-source corroboration: same ticker surfaced by ≥2 distinct accounts.
+  const crossSource = verified
+    .map((r) => ({ rec: r, srcs: distinctSources(buildTrail(r.ticker, signals, postsById, sourcesById)) }))
+    .filter((x) => x.srcs.length >= 2);
+
   return (
     <div className="space-y-8">
       <h1 className="text-2xl font-bold">לידים והמלצות</h1>
 
+      {crossSource.length > 0 && (
+        <section className="rounded-lg border border-[var(--pos)] bg-[var(--surface)] p-4">
+          <h2 className="mb-2 text-lg font-semibold">🔥 הצלבות בין מקורות</h2>
+          <p className="mb-2 text-xs text-[var(--muted)]">מניות שהומלצו ע"י יותר ממקור אחד — איתות חזק יותר.</p>
+          <ul className="space-y-1 text-sm">
+            {crossSource.map(({ rec, srcs }) => (
+              <li key={rec.id}>
+                <span className="font-bold">{rec.ticker}</span> — {srcs.length} מקורות:{" "}
+                <span className="text-[var(--muted)]">{srcs.join(" · ")}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <section>
-        <h2 className="mb-4 text-lg font-semibold">המלצות</h2>
-        {recommendations.length === 0 ? (
-          <p className="text-sm text-[var(--muted)]">אין המלצות עדיין — יופקו בריצה היומית הבאה.</p>
+        <h2 className="mb-4 text-lg font-semibold">המלצות מאומתות ({verified.length}) — מהטובה לפחות</h2>
+        {verified.length === 0 ? (
+          <p className="text-sm text-[var(--muted)]">אין המלצות מאומתות עדיין.</p>
         ) : (
           <div className="space-y-4">
-            {recommendations.map((rec) => (
-              <div key={rec.id} className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
-                <div className="mb-3 flex items-center gap-3">
-                  <span className="text-lg font-bold">{rec.ticker}</span>
-                  <span className="text-xs text-[var(--muted)]">{rec.date}</span>
-                  {rec.manipulation_flag && (
-                    <span className="rounded bg-[var(--neg)] px-2 py-0.5 text-xs font-semibold text-white">
-                      ⚠ חשד מניפולציה
-                    </span>
-                  )}
+            {verified.map((rec, idx) => {
+              const trail = buildTrail(rec.ticker, signals, postsById, sourcesById);
+              const srcs = distinctSources(trail);
+              return (
+                <div key={rec.id} className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
+                  <div className="mb-3 flex items-center gap-3">
+                    <span className="text-sm text-[var(--muted)]">#{idx + 1}</span>
+                    <span className="text-lg font-bold">{rec.ticker}</span>
+                    <span className="text-xs text-[var(--muted)]">{rec.date}</span>
+                    {srcs.length >= 2 && (
+                      <span className="rounded bg-[var(--pos)] px-2 py-0.5 text-xs font-semibold text-black">
+                        🔥 {srcs.length} מקורות
+                      </span>
+                    )}
+                    {rec.manipulation_flag && (
+                      <span className="rounded bg-[var(--neg)] px-2 py-0.5 text-xs font-semibold text-white">
+                        ⚠ חשד מניפולציה
+                      </span>
+                    )}
+                  </div>
+                  <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <ScoreBar label="ציון מערכת" value={rec.system_score} />
+                    <ScoreBar label="ציון חברתי" value={rec.social_score} />
+                  </div>
+                  <p className="text-sm text-[var(--muted)]">{rec.rationale}</p>
+                  <div className="mt-3 space-y-2 rounded-md border border-[var(--border)] bg-[var(--background)] p-3">
+                    <div className="text-xs font-semibold text-[var(--muted)]">מסלול החשיבה</div>
+                    <div>
+                      <div className="text-xs text-[var(--muted)]">מאיפה הגיע:</div>
+                      <TrailList items={trail} />
+                    </div>
+                    <div>
+                      <div className="text-xs text-[var(--muted)]">איפה אומת:</div>
+                      <div className="mt-1 flex flex-wrap gap-1.5">
+                        {(rec.verified_sources ?? []).map((v, i) => (
+                          <span key={i} className="rounded bg-[var(--surface)] px-2 py-0.5 text-xs">
+                            ✓ {v}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <ScoreBar label="ציון מערכת" value={rec.system_score} />
-                  <ScoreBar label="ציון חברתי" value={rec.social_score} />
-                </div>
-                <p className="text-sm text-[var(--muted)]">{rec.rationale}</p>
-                <Trail
-                  items={buildTrail(rec.ticker, signals, postsById, sourcesById)}
-                  verified={rec.verified_sources ?? []}
-                />
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>
 
       <section>
         <h2 className="mb-3 text-lg font-semibold">כל הלידים ({leads.length})</h2>
-        {leads.length === 0 ? (
-          <p className="text-sm text-[var(--muted)]">אין לידים עדיין.</p>
-        ) : (
-          <div className="space-y-3">
-            {leads.map((lead) => {
-              const trail = buildTrail(lead.ticker, signals, postsById, sourcesById);
-              return (
-                <div key={lead.id} className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3">
-                  <div className="flex items-center gap-3 text-sm">
-                    <span className="font-semibold">{lead.ticker}</span>
-                    <span className="text-[var(--muted)]">{STATUS_LABEL[lead.status] ?? lead.status}</span>
-                    <span className="text-[var(--muted)]">· {lead.mention_count} אזכורים</span>
-                  </div>
-                  {trail.length > 0 && (
-                    <ul className="mt-2 space-y-1">
-                      {trail.map((it, i) => (
-                        <li key={i} className="text-sm">
-                          <span>{it.type}</span> ·{" "}
-                          <a href={it.url} target="_blank" rel="noreferrer" className="font-semibold hover:underline">
-                            {it.handle}
-                          </a>
-                          {it.claim && <span className="text-[var(--muted)]"> — “{it.claim}”</span>}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
+        <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
+          <table className="w-full text-sm">
+            <thead className="bg-[var(--surface)] text-[var(--muted)]">
+              <tr>
+                {["טיקר", "סטטוס", "אזכורים", "מקורות"].map((h) => (
+                  <th key={h} className="whitespace-nowrap px-3 py-2 text-right font-medium">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {leads.map((lead) => {
+                const srcs = distinctSources(buildTrail(lead.ticker, signals, postsById, sourcesById));
+                return (
+                  <tr key={lead.id} className="border-t border-[var(--border)]">
+                    <td className="px-3 py-2 font-semibold">{lead.ticker}</td>
+                    <td className="px-3 py-2">{STATUS_LABEL[lead.status] ?? lead.status}</td>
+                    <td className="px-3 py-2">{lead.mention_count}</td>
+                    <td className="px-3 py-2 text-[var(--muted)]">{srcs.join(" · ") || "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </section>
     </div>
   );
