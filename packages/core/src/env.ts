@@ -15,6 +15,9 @@ const schema = z.object({
   APIFY_TOKEN: z.string().optional(),
   /** Dedicated Instagram account session cookie string (for story scraping). */
   IG_SESSION: z.string().optional(),
+  /** Dedicated X (Twitter) account session for tweet scraping. */
+  X_AUTH_TOKEN: z.string().optional(),
+  X_CT0: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
   SUPABASE_URL: z.string().url().optional(),
