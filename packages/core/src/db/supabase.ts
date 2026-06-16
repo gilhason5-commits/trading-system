@@ -411,6 +411,11 @@ export class SupabaseRepository implements Repository {
     return data as DailyDigest;
   }
 
+  async deleteDigest(id: string): Promise<void> {
+    const { error } = await this.db.from("daily_digests").delete().eq("id", id);
+    if (error) this.fail(error);
+  }
+
   async listRuns(): Promise<Run[]> {
     const { data, error } = await this.db
       .from("runs")

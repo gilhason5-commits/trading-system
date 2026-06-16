@@ -75,6 +75,7 @@ export interface Repository {
   // digests + runs + alerts + settings
   listDigests(): Promise<DailyDigest[]>;
   addDigest(d: Omit<DailyDigest, "id" | "created_at">): Promise<DailyDigest>;
+  deleteDigest(id: string): Promise<void>;
   listRuns(): Promise<Run[]>;
   startRun(date: string): Promise<Run>;
   finishRun(id: string, patch: Partial<Run>): Promise<void>;

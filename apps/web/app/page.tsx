@@ -1,4 +1,4 @@
-import { formatDual, formatUsd, getRepository, type AllocationSlice, type Run } from "@trading/core";
+import { formatDual, formatUsd, getRepository, type AllocationSlice } from "@trading/core";
 import { AddTransaction } from "@/components/AddTransaction";
 import { PnL, Pct, formatPct, sinceLabel } from "@/components/format";
 import { Sparkline } from "@/components/Sparkline";
@@ -11,9 +11,19 @@ export default async function DashboardPage() {
     getPortfolio(),
     getRepository().listRuns(),
   ]);
-  const lastRun = runs
-    .slice()
-    .sort((a, b) => (b.started_at ?? b.date).localeCompare(a.started_at ?? a.date))[0];
+  // Sum every run in the current calendar (Gregorian) month.
+  const month = new Date().toISOString().slice(0, 7); // YYYY-MM
+  const monthRuns = runs.filter((r) => r.date.startsWith(month));
+  const monthCost = monthRuns.reduce(
+    (a, r) => ({
+      tokens_in: a.tokens_in + r.tokens_in,
+      tokens_out: a.tokens_out + r.tokens_out,
+      claude_cost: a.claude_cost + r.claude_cost,
+      scraping_cost: a.scraping_cost + r.scraping_cost,
+      total_cost: a.total_cost + r.total_cost,
+    }),
+    { tokens_in: 0, tokens_out: 0, claude_cost: 0, scraping_cost: 0, total_cost: 0 },
+  );
 
   return (
     <div className="space-y-8">
@@ -48,7 +58,7 @@ export default async function DashboardPage() {
         />
       </section>
 
-      {lastRun && <RunCost run={lastRun} />}
+      <MonthlyCost month={month} runs={monthRuns.length} cost={monthCost} />
 
       <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
         <div className="mb-2 flex items-baseline justify-between">
@@ -100,18 +110,26 @@ export default async function DashboardPage() {
   );
 }
 
-function RunCost({ run }: { run: Run }) {
+interface CostTotals {
+  tokens_in: number;
+  tokens_out: number;
+  claude_cost: number;
+  scraping_cost: number;
+  total_cost: number;
+}
+
+function MonthlyCost({ month, runs, cost }: { month: string; runs: number; cost: CostTotals }) {
   return (
     <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
       <div className="mb-3 flex items-baseline justify-between">
-        <h2 className="text-lg font-semibold">עלות ריצה יומית</h2>
-        <span className="text-xs text-[var(--muted)]">{run.date} · {run.status}</span>
+        <h2 className="text-lg font-semibold">עלות ריצה חודשית</h2>
+        <span className="text-xs text-[var(--muted)]">{month} · {runs} ריצות</span>
       </div>
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <Stat label="טוקנים (in/out)" value={`${run.tokens_in.toLocaleString()} / ${run.tokens_out.toLocaleString()}`} />
-        <Stat label="Claude" value={formatUsd(run.claude_cost)} />
-        <Stat label="סקרייפינג" value={formatUsd(run.scraping_cost)} />
-        <Stat label='סה"כ' value={formatUsd(run.total_cost)} />
+        <Stat label="טוקנים (in/out)" value={`${cost.tokens_in.toLocaleString()} / ${cost.tokens_out.toLocaleString()}`} />
+        <Stat label="Claude" value={formatUsd(cost.claude_cost)} />
+        <Stat label="סקרייפינג" value={formatUsd(cost.scraping_cost)} />
+        <Stat label='סה"כ' value={formatUsd(cost.total_cost)} />
       </div>
     </section>
   );

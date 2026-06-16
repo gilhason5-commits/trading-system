@@ -223,6 +223,9 @@ export class MockRepository implements Repository {
     this.digests.push(full);
     return full;
   }
+  async deleteDigest(id: string) {
+    this.digests = this.digests.filter((x) => x.id !== id);
+  }
   async listRuns() {
     return [...this.runs].sort((a, b) => b.date.localeCompare(a.date));
   }

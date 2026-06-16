@@ -102,6 +102,10 @@ export async function runDigestStage(ctx: RunContext): Promise<DailyDigest> {
   ctx.cost.addClaude(res.usage, res.model);
 
   const parsed = parseDigest(res.text);
+  // Replace any existing digest for this date so re-runs don't duplicate.
+  for (const d of await ctx.repo.listDigests()) {
+    if (d.date === ctx.date) await ctx.repo.deleteDigest(d.id);
+  }
   const digest = await ctx.repo.addDigest({
     date: ctx.date,
     html: parsed.html,
