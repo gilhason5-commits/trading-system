@@ -18,7 +18,9 @@ export default async function StockCard({ params }: { params: Promise<{ ticker: 
     repo.listSignals(ticker),
   ]);
   const position = positions.find((p) => p.ticker === ticker) ?? null;
-  const technicals = position ? await md.getTechnicals(ticker, position.market) : null;
+  const technicals = position
+    ? await md.getTechnicals(ticker, position.market).catch(() => null)
+    : null;
 
   return (
     <div className="space-y-6">
