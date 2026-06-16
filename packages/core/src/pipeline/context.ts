@@ -5,6 +5,7 @@ import { getFundamentals, type FundamentalsSource } from "../datasources/fmp.ts"
 import { getNews, type NewsSource } from "../datasources/finnhub.ts";
 import { getYouTube, type YouTubeSource } from "../datasources/youtube.ts";
 import { getSocial, type SocialSource } from "../datasources/apify.ts";
+import { getInstagramStories, type InstagramStoriesSource } from "../datasources/instagram_stories.ts";
 import { getRss, type RssSource } from "../datasources/rss.ts";
 import { getRepository, type Repository } from "../db/index.ts";
 
@@ -20,6 +21,7 @@ export interface RunContext {
   news: NewsSource;
   youtube: YouTubeSource;
   social: SocialSource;
+  instagramStories: InstagramStoriesSource;
   rss: RssSource;
   claude: ClaudeClient;
   cost: CostAccumulator;
@@ -34,6 +36,7 @@ export function createRunContext(date = today()): RunContext {
     news: getNews(),
     youtube: getYouTube(),
     social: getSocial(),
+    instagramStories: getInstagramStories(),
     rss: getRss(),
     claude: getClaude(),
     cost: new CostAccumulator(),

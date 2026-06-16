@@ -170,6 +170,30 @@ async function fetchInstagramPosts(
     fresh.push(post);
   }
 
+  // Active stories (ephemeral, require the dedicated IG session). Captured with
+  // whatever text they carry (caption / link sticker); video-story transcription
+  // is intentionally NOT auto-run here to avoid runaway Whisper cost.
+  try {
+    const stories = await ctx.instagramStories.fetchStories(handle);
+    for (const s of stories) {
+      if (await ctx.repo.hasPost(sourceId, s.externalId)) continue;
+      const post = await ctx.repo.addPost({
+        source_id: sourceId,
+        external_id: s.externalId,
+        url: s.url,
+        title: s.title,
+        text: s.text ?? undefined,
+        published_at: s.publishedAt,
+      });
+      fresh.push(post);
+    }
+  } catch (err) {
+    await ctx.repo.addAlert({
+      kind: "error",
+      message: `IG stories failed for ${handle}: ${(err as Error).message}`,
+    });
+  }
+
   return fresh;
 }
 

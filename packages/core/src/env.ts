@@ -13,6 +13,8 @@ const schema = z.object({
   FINNHUB_API_KEY: z.string().optional(),
   YOUTUBE_API_KEY: z.string().optional(),
   APIFY_TOKEN: z.string().optional(),
+  /** Dedicated Instagram account session cookie string (for story scraping). */
+  IG_SESSION: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
   SUPABASE_URL: z.string().url().optional(),
