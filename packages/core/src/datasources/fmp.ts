@@ -144,13 +144,52 @@ export class LiveFundamentals implements FundamentalsSource {
   }
 }
 
+// ── Live (Finnhub Basic Financials) ─────────────────────────────────────────
+// FMP's free tier 403s on financial statements, so fundamentals default to
+// Finnhub's /stock/metric (free) — P/E, margins, revenue growth, leverage.
+const FINNHUB_BASE = "https://finnhub.io/api/v1";
+
+export class LiveFinnhubFundamentals implements FundamentalsSource {
+  constructor(private readonly token: string) {}
+
+  async getFundamentals(ticker: string): Promise<Fundamentals> {
+    const t = encodeURIComponent(ticker);
+    const [mRes, pRes] = await Promise.all([
+      fetch(`${FINNHUB_BASE}/stock/metric?symbol=${t}&metric=all&token=${this.token}`),
+      fetch(`${FINNHUB_BASE}/stock/profile2?symbol=${t}&token=${this.token}`),
+    ]);
+    if (!mRes.ok) throw new Error(`Finnhub metric ${ticker}: HTTP ${mRes.status}`);
+    const mj = (await mRes.json()) as { metric?: Record<string, unknown> };
+    const m = mj.metric ?? {};
+    const profile = pRes.ok ? ((await pRes.json()) as Record<string, unknown>) : {};
+    const num = (v: unknown) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : 0;
+    };
+    return {
+      ticker,
+      sector: String(profile.finnhubIndustry ?? "Unknown"),
+      net_margin: num(m.netProfitMarginTTM) / 100,
+      revenue_growth: num(m.revenueGrowthTTMYoy) / 100,
+      pe_ratio: num(m.peTTM),
+      debt_to_equity: num(
+        m["totalDebt/totalEquityQuarterly"] ?? m["totalDebt/totalEquityAnnual"] ?? m["longTermDebt/equityQuarterly"],
+      ),
+      next_earnings_date: "",
+      last_earnings_surprise: 0,
+      analyst_price_target: 0,
+    };
+  }
+}
+
 // ── Factory ───────────────────────────────────────────────────────────────
 let instance: FundamentalsSource | null = null;
 
 export function getFundamentals(): FundamentalsSource {
   if (instance) return instance;
-  instance = isLive("FMP_API_KEY")
-    ? new LiveFundamentals(getEnv().FMP_API_KEY!)
-    : new MockFundamentals();
+  // Prefer Finnhub (free fundamentals work); fall back to FMP if its key is set.
+  if (isLive("FINNHUB_API_KEY")) instance = new LiveFinnhubFundamentals(getEnv().FINNHUB_API_KEY!);
+  else if (isLive("FMP_API_KEY")) instance = new LiveFundamentals(getEnv().FMP_API_KEY!);
+  else instance = new MockFundamentals();
   return instance;
 }

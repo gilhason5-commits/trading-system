@@ -57,7 +57,7 @@ async function buildContext(ctx: RunContext, ticker: string, market: Market) {
   // Audit trail: only sources that actually returned data (e.g. FMP 403 → excluded).
   const verifiedSources: string[] = [];
   if (technicals) verifiedSources.push("ניתוח טכני (Twelve Data)");
-  if (fundamentals) verifiedSources.push("פונדמנטלי (FMP)");
+  if (fundamentals) verifiedSources.push("פונדמנטלי (Finnhub)");
   if (news.length) verifiedSources.push("חדשות (Finnhub)");
 
   return { analysisText, webContextText, verifiedSources };
