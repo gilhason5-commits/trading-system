@@ -2,13 +2,6 @@ import { getRepository, type Post, type Recommendation, type Signal, type Source
 
 export const dynamic = "force-dynamic";
 
-const STATUS_LABEL: Record<string, string> = {
-  new: "חדש",
-  researching: "במחקר",
-  recommended: "מומלץ",
-  dismissed: "נדחה",
-};
-
 function discoveryType(platform: string, externalId: string): string {
   switch (platform) {
     case "youtube":
@@ -95,9 +88,8 @@ function TrailList({ items }: { items: TrailItem[] }) {
 
 export default async function LeadsPage() {
   const repo = getRepository();
-  const [recommendations, leads, signals, posts, sources, positions] = await Promise.all([
+  const [recommendations, signals, posts, sources, positions] = await Promise.all([
     repo.listRecommendations(),
-    repo.listLeads(),
     repo.listSignals(),
     repo.listPosts(),
     repo.listSources(),
@@ -230,33 +222,6 @@ export default async function LeadsPage() {
         )}
       </section>
 
-      <section>
-        <h2 className="mb-3 text-lg font-semibold">כל הלידים ({leads.length})</h2>
-        <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
-          <table className="w-full text-sm">
-            <thead className="bg-[var(--surface)] text-[var(--muted)]">
-              <tr>
-                {["טיקר", "סטטוס", "אזכורים", "מקורות"].map((h) => (
-                  <th key={h} className="whitespace-nowrap px-3 py-2 text-right font-medium">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {leads.map((lead) => {
-                const srcs = distinctSources(buildTrail(lead.ticker, signals, postsById, sourcesById));
-                return (
-                  <tr key={lead.id} className="border-t border-[var(--border)]">
-                    <td className="px-3 py-2 font-semibold">{lead.ticker}</td>
-                    <td className="px-3 py-2">{STATUS_LABEL[lead.status] ?? lead.status}</td>
-                    <td className="px-3 py-2">{lead.mention_count}</td>
-                    <td className="px-3 py-2 text-[var(--muted)]">{srcs.join(" · ") || "—"}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </section>
     </div>
   );
 }
