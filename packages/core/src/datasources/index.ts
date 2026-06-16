@@ -5,4 +5,5 @@ export * from "./finnhub.ts";
 export * from "./youtube.ts";
 export * from "./apify.ts";
 export * from "./instagram_stories.ts";
+export * from "./x.ts";
 export * from "./rss.ts";

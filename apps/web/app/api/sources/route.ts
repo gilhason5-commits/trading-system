@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getRepository, type Platform } from "@trading/core";
 
-const VALID_PLATFORMS: Platform[] = ["youtube", "tiktok", "instagram", "rss"];
+const VALID_PLATFORMS: Platform[] = ["youtube", "tiktok", "instagram", "rss", "x"];
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));

@@ -8,6 +8,7 @@ const PLATFORMS = [
   { v: "youtube", label: "YouTube" },
   { v: "tiktok", label: "TikTok" },
   { v: "instagram", label: "Instagram" },
+  { v: "x", label: "X (Twitter)" },
   { v: "rss", label: "RSS" },
 ];
 

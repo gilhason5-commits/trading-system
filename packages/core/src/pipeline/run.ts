@@ -21,7 +21,20 @@ export interface DailyRunResult {
   digestKeyInsights: string[];
 }
 
-export async function runDailyPipeline(date?: string): Promise<DailyRunResult> {
+export interface DailyRunOptions {
+  /** Retry failed analysis/research this many times before the digest. */
+  retries?: number;
+  /** Delay before each retry (default 10 minutes). */
+  retryDelayMs?: number;
+}
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+export async function runDailyPipeline(
+  date?: string,
+  opts: DailyRunOptions = {},
+): Promise<DailyRunResult> {
+  const { retries = 1, retryDelayMs = 10 * 60 * 1000 } = opts;
   const ctx = createRunContext(date);
   const run = await ctx.repo.startRun(ctx.date);
 
@@ -29,6 +42,25 @@ export async function runDailyPipeline(date?: string): Promise<DailyRunResult> {
     const analyses = await runAnalysisStage(ctx);
     const scrape = await runScrapingStage(ctx);
     const recommendations = await runResearchStage(ctx);
+
+    // Retry whatever failed (e.g. Twelve Data rate-limits) after a delay, before
+    // the digest. Analysis is idempotent; research only re-runs new/researching leads.
+    for (let attempt = 0; attempt < retries; attempt++) {
+      const positions = await ctx.repo.listPositions();
+      const analysed = new Set((await ctx.repo.listAnalyses(ctx.date)).map((a) => a.ticker.toUpperCase()));
+      const missingAnalysis = positions.filter((p) => !analysed.has(p.ticker.toUpperCase()));
+      const pendingLeads = [...(await ctx.repo.listLeads("new")), ...(await ctx.repo.listLeads("researching"))];
+      if (missingAnalysis.length === 0 && pendingLeads.length === 0) break;
+
+      await ctx.repo.addAlert({
+        kind: "error",
+        message: `ריטריי בעוד ${retryDelayMs / 60000} דק': ${missingAnalysis.length} ניתוחים + ${pendingLeads.length} לידים שנכשלו`,
+      });
+      await sleep(retryDelayMs);
+      analyses.push(...(await runAnalysisStage(ctx)));
+      recommendations.push(...(await runResearchStage(ctx)));
+    }
+
     const digest = await runDigestStage(ctx);
 
     const cost = ctx.cost.summary();

@@ -6,7 +6,7 @@ export type Currency = "USD" | "ILS";
 export type Side = "buy" | "sell";
 export type Stance = "hold" | "add" | "trim";
 export type LeadStatus = "new" | "researching" | "recommended" | "dismissed";
-export type Platform = "youtube" | "tiktok" | "instagram" | "rss";
+export type Platform = "youtube" | "tiktok" | "instagram" | "rss" | "x";
 export type Sentiment = "bullish" | "bearish" | "neutral";
 
 /** A money amount carried in both base (USD) and display (ILS) currency. */

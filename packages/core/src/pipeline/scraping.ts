@@ -125,6 +125,8 @@ async function fetchSourcePosts(
       return fetchInstagramPosts(ctx, sourceId, handle);
     case "tiktok":
       return fetchTikTokPosts(ctx, sourceId, handle);
+    case "x":
+      return fetchXPosts(ctx, sourceId, handle);
     case "rss":
       return fetchRssPosts(ctx, sourceId, handle);
     default:
@@ -241,6 +243,31 @@ async function fetchTikTokPosts(
       url: item.url,
       title: item.title,
       text: text ?? undefined,
+      published_at: item.publishedAt,
+    });
+    fresh.push(post);
+  }
+
+  return fresh;
+}
+
+async function fetchXPosts(
+  ctx: RunContext,
+  sourceId: string,
+  handle: string,
+): Promise<Post[]> {
+  const items = (await ctx.x.fetchTweets(handle)).filter((i) => isRecent(i.publishedAt));
+  ctx.cost.addScraping(0.002 * items.length);
+  const fresh: Post[] = [];
+
+  for (const item of items) {
+    if (await ctx.repo.hasPost(sourceId, item.externalId)) continue;
+    const post = await ctx.repo.addPost({
+      source_id: sourceId,
+      external_id: item.externalId,
+      url: item.url,
+      title: item.title,
+      text: item.text ?? undefined,
       published_at: item.publishedAt,
     });
     fresh.push(post);

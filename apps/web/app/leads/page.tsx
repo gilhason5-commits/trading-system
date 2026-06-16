@@ -10,6 +10,8 @@ function discoveryType(platform: string, externalId: string): string {
       return "🎬 סרטון טיקטוק";
     case "instagram":
       return externalId.startsWith("story_") ? "📸 סטורי אינסטגרם" : "📷 פוסט אינסטגרם";
+    case "x":
+      return "𝕏 ציוץ";
     case "rss":
       return "📰 כתבה";
     default:

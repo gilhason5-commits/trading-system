@@ -73,8 +73,11 @@ async function analyseOne(ctx: RunContext, position: Position): Promise<Analysis
 /** Run daily analysis for every held position. Returns the saved analyses. */
 export async function runAnalysisStage(ctx: RunContext): Promise<Analysis[]> {
   const positions = await ctx.repo.listPositions();
+  // Idempotent: skip positions already analysed today (so a retry only redoes failures).
+  const done = new Set((await ctx.repo.listAnalyses(ctx.date)).map((a) => a.ticker.toUpperCase()));
   const out: Analysis[] = [];
   for (const p of positions) {
+    if (done.has(p.ticker.toUpperCase())) continue;
     try {
       out.push(await analyseOne(ctx, p));
     } catch (err) {
