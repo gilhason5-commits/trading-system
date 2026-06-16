@@ -36,26 +36,25 @@ function parseDigest(text: string): { html: string; key_insights: string[] } {
 }
 
 async function buildAggregation(ctx: RunContext) {
-  const [positions, fxRow, snapshots, analyses, recommendations, leads] = await Promise.all([
+  const [positions, fxRow, snapshots, analyses, recommendations, leads, cached] = await Promise.all([
     ctx.repo.listPositions(),
     ctx.repo.latestFx(),
     ctx.repo.listSnapshots(),
     ctx.repo.listAnalyses(ctx.date),
     ctx.repo.listRecommendations(ctx.date),
     ctx.repo.listLeads(),
+    ctx.repo.listCachedQuotes(),
   ]);
 
+  // Read prices from the same background-refreshed quote cache the dashboard uses,
+  // so the digest's portfolio numbers (incl. daily change) match it exactly.
   const usdIls = fxRow?.rate ?? 3.62;
-  const quotePairs = await Promise.all(
-    positions.map(async (p): Promise<[string, Quote] | null> => {
-      try {
-        return [p.ticker, await ctx.md.getQuote(p.ticker, p.market)];
-      } catch {
-        return null; // missing quote → enrichPositions falls back to avg_cost
-      }
-    }),
+  const quotes = new Map<string, Quote>(
+    cached.map((c) => [
+      c.ticker,
+      { symbol: c.ticker, price: c.price, currency: c.currency, percent_change: c.percent_change, previous_close: c.previous_close },
+    ]),
   );
-  const quotes = new Map<string, Quote>(quotePairs.filter((x): x is [string, Quote] => x !== null));
   const views = enrichPositions(positions, quotes, usdIls);
   const stats = computeStats(views, usdIls, snapshots);
 
