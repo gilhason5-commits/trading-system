@@ -156,13 +156,77 @@ export class LiveMarketData implements MarketDataSource {
   }
 }
 
+// ── Hybrid (Finnhub quotes + free FX, Twelve Data technicals) ───────────────
+// Twelve Data free is capped at 800 credits/DAY, so it can't sustain a few-minute
+// price poll. Finnhub free (60/min, no hard daily cap) serves quotes; USD/ILS
+// comes from a free no-key FX API (also fixes Twelve Data's wrong ~2.91 rate).
+// Technicals stay on Twelve Data — they're only fetched once/day in research.
+const FINNHUB = "https://finnhub.io/api/v1";
+
+export class HybridMarketData implements MarketDataSource {
+  private readonly td: LiveMarketData;
+  constructor(
+    private readonly finnhubKey: string,
+    twelveDataKey?: string,
+  ) {
+    this.td = new LiveMarketData(twelveDataKey ?? "");
+  }
+
+  async getQuote(symbol: string, market: Market): Promise<Quote> {
+    // Finnhub covers US equities; TASE/crypto fall back to Twelve Data.
+    if (market === "US") {
+      const res = await fetch(`${FINNHUB}/quote?symbol=${encodeURIComponent(symbol)}&token=${this.finnhubKey}`);
+      if (res.ok) {
+        const j = (await res.json()) as { c?: number; dp?: number; pc?: number };
+        if (typeof j.c === "number" && j.c > 0) {
+          return {
+            symbol,
+            price: j.c,
+            currency: "USD",
+            percent_change: j.dp ?? 0,
+            previous_close: j.pc ?? j.c,
+          };
+        }
+      }
+    }
+    return this.td.getQuote(symbol, market);
+  }
+
+  async getUsdIls(): Promise<number> {
+    for (const url of [
+      "https://open.er-api.com/v6/latest/USD",
+      "https://api.exchangerate.host/latest?base=USD&symbols=ILS",
+    ]) {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) continue;
+        const j = (await res.json()) as { rates?: { ILS?: number } };
+        const ils = j?.rates?.ILS;
+        if (typeof ils === "number" && ils > 0) return ils;
+      } catch {
+        // try the next source
+      }
+    }
+    return 3.6; // last-resort fallback
+  }
+
+  getTechnicals(symbol: string, market: Market): Promise<Technicals> {
+    return this.td.getTechnicals(symbol, market);
+  }
+}
+
 // ── Factory ───────────────────────────────────────────────────────────────
 let instance: MarketDataSource | null = null;
 
 export function getMarketData(): MarketDataSource {
   if (instance) return instance;
-  instance = isLive("TWELVEDATA_API_KEY")
-    ? new LiveMarketData(getEnv().TWELVEDATA_API_KEY!)
-    : new MockMarketData();
+  const env = getEnv();
+  if (env.DATA_MODE === "live" && env.FINNHUB_API_KEY) {
+    instance = new HybridMarketData(env.FINNHUB_API_KEY, env.TWELVEDATA_API_KEY);
+  } else if (isLive("TWELVEDATA_API_KEY")) {
+    instance = new LiveMarketData(env.TWELVEDATA_API_KEY!);
+  } else {
+    instance = new MockMarketData();
+  }
   return instance;
 }
