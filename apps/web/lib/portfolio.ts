@@ -1,9 +1,7 @@
 import {
   computeStats,
-  concentrationBreaches,
   enrichPositions,
   getRepository,
-  type AllocationSlice,
   type CachedQuote,
   type PortfolioSnapshot,
   type PortfolioStats,
@@ -14,7 +12,6 @@ import {
 export interface PortfolioData {
   views: PositionView[];
   stats: PortfolioStats;
-  breaches: AllocationSlice[];
   snapshots: PortfolioSnapshot[];
   usdIls: number;
   /** ISO time the cached quotes were last refreshed (by pollPrices), or null. */
@@ -42,11 +39,10 @@ export function latestUpdate(cached: CachedQuote[]): string | null {
  */
 export async function getPortfolio(): Promise<PortfolioData> {
   const repo = getRepository();
-  const [positions, fxRow, snapshots, settings, cached] = await Promise.all([
+  const [positions, fxRow, snapshots, cached] = await Promise.all([
     repo.listPositions(),
     repo.latestFx(),
     repo.listSnapshots(),
-    repo.getSettings(),
     repo.listCachedQuotes(),
   ]);
 
@@ -55,7 +51,6 @@ export async function getPortfolio(): Promise<PortfolioData> {
 
   const views = enrichPositions(positions, quotes, usdIls);
   const stats = computeStats(views, usdIls, snapshots);
-  const breaches = concentrationBreaches(stats, settings.concentration_threshold);
 
-  return { views, stats, breaches, snapshots, usdIls, lastUpdated: latestUpdate(cached) };
+  return { views, stats, snapshots, usdIls, lastUpdated: latestUpdate(cached) };
 }

@@ -12,7 +12,6 @@ const nav = [
   { href: "/leads", label: "לידים והמלצות" },
   { href: "/digests", label: "סיכומים יומיים" },
   { href: "/sources", label: "מקורות" },
-  { href: "/settings", label: "הגדרות" },
 ];
 
 export default function RootLayout({

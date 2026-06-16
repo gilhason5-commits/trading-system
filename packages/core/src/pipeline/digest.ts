@@ -1,13 +1,12 @@
 import { digestPrompt } from "../claude/index.ts";
-import { getEmailSender } from "../email.ts";
 import { computeStats, enrichPositions } from "../portfolio.ts";
 import type { Quote } from "../datasources/twelvedata.ts";
 import type { DailyDigest } from "../types.ts";
 import type { RunContext } from "./context.ts";
 
-// Module 5 — daily Hebrew RTL email digest (spec §9). Aggregates every stage's
-// output + the run cost so far, has Claude write the email, persists it, and sends
-// via Resend (mock no-ops). The digest call's own cost is added after composition.
+// Module 5 — daily Hebrew RTL digest (spec §9). Aggregates every stage's output +
+// the run cost so far, has Claude write the HTML, and persists it (shown on the
+// /digests page; no email). The digest call's own cost is added after composition.
 
 /**
  * Parse the digest model's delimited response: raw HTML, then `===KEY_INSIGHTS===`,
@@ -37,14 +36,13 @@ function parseDigest(text: string): { html: string; key_insights: string[] } {
 }
 
 async function buildAggregation(ctx: RunContext) {
-  const [positions, fxRow, snapshots, analyses, recommendations, leads, settings] = await Promise.all([
+  const [positions, fxRow, snapshots, analyses, recommendations, leads] = await Promise.all([
     ctx.repo.listPositions(),
     ctx.repo.latestFx(),
     ctx.repo.listSnapshots(),
     ctx.repo.listAnalyses(ctx.date),
     ctx.repo.listRecommendations(ctx.date),
     ctx.repo.listLeads(),
-    ctx.repo.getSettings(),
   ]);
 
   const usdIls = fxRow?.rate ?? 3.62;
@@ -87,12 +85,12 @@ async function buildAggregation(ctx: RunContext) {
     cost: ctx.cost.summary(),
   };
 
-  return { aggregation, settings };
+  return { aggregation };
 }
 
-/** Compose, persist and send the daily digest. */
+/** Compose and persist the daily digest (shown on /digests; no email). */
 export async function runDigestStage(ctx: RunContext): Promise<DailyDigest> {
-  const { aggregation, settings } = await buildAggregation(ctx);
+  const { aggregation } = await buildAggregation(ctx);
 
   const prompt = digestPrompt(JSON.stringify(aggregation));
   const res = await ctx.claude.complete({
@@ -109,12 +107,6 @@ export async function runDigestStage(ctx: RunContext): Promise<DailyDigest> {
     date: ctx.date,
     html: parsed.html,
     key_insights: parsed.key_insights ?? [],
-  });
-
-  await getEmailSender().send({
-    to: settings.digest_email,
-    subject: `סיכום יומי — ${ctx.date}`,
-    html: parsed.html,
   });
 
   return digest;

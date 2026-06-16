@@ -7,7 +7,7 @@ import { getPortfolio } from "@/lib/portfolio";
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const { views, stats, breaches, snapshots, usdIls, lastUpdated } = await getPortfolio();
+  const { views, stats, snapshots, usdIls, lastUpdated } = await getPortfolio();
 
   return (
     <div className="space-y-8">
@@ -20,13 +20,6 @@ export default async function DashboardPage() {
         </div>
         <AddTransaction />
       </section>
-
-      {breaches.length > 0 && (
-        <div className="rounded-lg border border-[var(--neg)] bg-[var(--surface)] p-3 text-sm">
-          ⚠ ריכוזיות גבוהה:{" "}
-          {breaches.map((b) => `${b.key} (${formatPct(b.weight_pct)})`).join(" · ")}
-        </div>
-      )}
 
       <section className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Stat label="שווי כולל" value={formatDual(stats.total_value)} />

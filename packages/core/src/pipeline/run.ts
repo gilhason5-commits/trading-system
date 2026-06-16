@@ -26,6 +26,8 @@ export interface DailyRunOptions {
   retries?: number;
   /** Delay before each retry (default 10 minutes). */
   retryDelayMs?: number;
+  /** Skip the digest stage (the digest runs as a separate scheduled job). */
+  skipDigest?: boolean;
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -34,7 +36,7 @@ export async function runDailyPipeline(
   date?: string,
   opts: DailyRunOptions = {},
 ): Promise<DailyRunResult> {
-  const { retries = 1, retryDelayMs = 10 * 60 * 1000 } = opts;
+  const { retries = 1, retryDelayMs = 10 * 60 * 1000, skipDigest = false } = opts;
   const ctx = createRunContext(date);
   const run = await ctx.repo.startRun(ctx.date);
 
@@ -61,7 +63,7 @@ export async function runDailyPipeline(
       recommendations.push(...(await runResearchStage(ctx)));
     }
 
-    const digest = await runDigestStage(ctx);
+    const digest = skipDigest ? null : await runDigestStage(ctx);
 
     const cost = ctx.cost.summary();
     await ctx.repo.finishRun(run.id, {
@@ -78,7 +80,7 @@ export async function runDailyPipeline(
       signals: scrape.signals.length,
       leads: scrape.leads.length,
       recommendations: recommendations.length,
-      digestKeyInsights: digest.key_insights,
+      digestKeyInsights: digest?.key_insights ?? [],
     };
   } catch (err) {
     await ctx.repo.finishRun(run.id, {
