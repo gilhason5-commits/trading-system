@@ -8,6 +8,7 @@ export const metadata: Metadata = {
 
 const nav = [
   { href: "/", label: "דשבורד" },
+  { href: "/paper", label: "תיק דמה" },
   { href: "/leads", label: "לידים והמלצות" },
   { href: "/digests", label: "סיכומים יומיים" },
   { href: "/sources", label: "מקורות" },

@@ -4,6 +4,7 @@ import type {
   DailyDigest,
   FxRate,
   Lead,
+  PaperPosition,
   PortfolioSnapshot,
   Position,
   Post,
@@ -27,6 +28,7 @@ const now = () => new Date().toISOString();
 export class MockRepository implements Repository {
   private transactions: Transaction[];
   private positions: Position[];
+  private paperPositions: PaperPosition[] = [];
   private fx: FxRate;
   private snapshots: PortfolioSnapshot[];
   private analyses: Analysis[];
@@ -74,6 +76,18 @@ export class MockRepository implements Repository {
   }
   async upsertPositions(positions: Position[]) {
     this.positions = positions;
+  }
+
+  async listPaperPositions() {
+    return [...this.paperPositions];
+  }
+  async addPaperPosition(p: Omit<PaperPosition, "id" | "created_at">) {
+    const full: PaperPosition = { ...p, id: nextId("paper"), created_at: now() };
+    this.paperPositions.push(full);
+    return full;
+  }
+  async deletePaperPosition(id: string) {
+    this.paperPositions = this.paperPositions.filter((p) => p.id !== id);
   }
 
   async latestFx() {

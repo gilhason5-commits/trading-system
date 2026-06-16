@@ -5,6 +5,7 @@ import type {
   DailyDigest,
   FxRate,
   Lead,
+  PaperPosition,
   PortfolioSnapshot,
   Position,
   Post,
@@ -90,6 +91,30 @@ export class SupabaseRepository implements Repository {
     const { error } = await this.db
       .from("positions")
       .upsert(positions, { onConflict: "ticker" });
+    if (error) this.fail(error);
+  }
+
+  async listPaperPositions(): Promise<PaperPosition[]> {
+    const { data, error } = await this.db
+      .from("paper_positions")
+      .select("*")
+      .order("created_at", { ascending: true });
+    if (error) this.fail(error);
+    return (data ?? []) as PaperPosition[];
+  }
+
+  async addPaperPosition(p: Omit<PaperPosition, "id" | "created_at">): Promise<PaperPosition> {
+    const { data, error } = await this.db
+      .from("paper_positions")
+      .insert(p)
+      .select()
+      .single();
+    if (error) this.fail(error);
+    return data as PaperPosition;
+  }
+
+  async deletePaperPosition(id: string): Promise<void> {
+    const { error } = await this.db.from("paper_positions").delete().eq("id", id);
     if (error) this.fail(error);
   }
 

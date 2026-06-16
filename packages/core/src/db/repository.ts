@@ -4,6 +4,7 @@ import type {
   DailyDigest,
   FxRate,
   Lead,
+  PaperPosition,
   PortfolioSnapshot,
   Position,
   Post,
@@ -26,6 +27,11 @@ export interface Repository {
   /** Positions are derived from transactions; stored copy used for enrichment. */
   listPositions(): Promise<Position[]>;
   upsertPositions(positions: Position[]): Promise<void>;
+
+  // paper (demo) portfolio — isolated, never affects real positions/pages
+  listPaperPositions(): Promise<PaperPosition[]>;
+  addPaperPosition(p: Omit<PaperPosition, "id" | "created_at">): Promise<PaperPosition>;
+  deletePaperPosition(id: string): Promise<void>;
 
   // fx + snapshots
   latestFx(): Promise<FxRate | null>;

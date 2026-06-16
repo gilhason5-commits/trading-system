@@ -42,6 +42,17 @@ export interface Position {
   sector?: string;
 }
 
+/**
+ * A holding in the isolated paper (demo) portfolio. Structurally a superset of
+ * Position so it reuses enrichPositions/computeStats, but stored directly
+ * (entry price = current price at add time) and kept apart from real positions.
+ */
+export interface PaperPosition extends Position {
+  id: string;
+  /** ISO timestamp when the position was opened (entry). */
+  created_at: string;
+}
+
 /** A position enriched with live price + P&L, ready for the dashboard. */
 export interface PositionView extends Position {
   price_native: number;
