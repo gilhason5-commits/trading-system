@@ -2,6 +2,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type {
   Alert,
   Analysis,
+  CachedQuote,
   DailyDigest,
   FxRate,
   Lead,
@@ -135,6 +136,19 @@ export class SupabaseRepository implements Repository {
 
   async saveFx(rate: FxRate): Promise<void> {
     const { error } = await this.db.from("fx_rates").insert(rate);
+    if (error) this.fail(error);
+  }
+
+  async listCachedQuotes(): Promise<CachedQuote[]> {
+    const { data, error } = await this.db.from("quote_cache").select("*");
+    if (error) this.fail(error);
+    return (data ?? []) as CachedQuote[];
+  }
+
+  async upsertCachedQuotes(quotes: Omit<CachedQuote, "updated_at">[]): Promise<void> {
+    if (quotes.length === 0) return;
+    const rows = quotes.map((q) => ({ ...q, updated_at: this.now() }));
+    const { error } = await this.db.from("quote_cache").upsert(rows, { onConflict: "ticker" });
     if (error) this.fail(error);
   }
 

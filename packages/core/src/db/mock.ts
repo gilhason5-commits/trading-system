@@ -1,6 +1,7 @@
 import type {
   Alert,
   Analysis,
+  CachedQuote,
   DailyDigest,
   FxRate,
   Lead,
@@ -29,6 +30,7 @@ export class MockRepository implements Repository {
   private transactions: Transaction[];
   private positions: Position[];
   private paperPositions: PaperPosition[] = [];
+  private cachedQuotes: CachedQuote[] = [];
   private fx: FxRate;
   private snapshots: PortfolioSnapshot[];
   private analyses: Analysis[];
@@ -95,6 +97,17 @@ export class MockRepository implements Repository {
   }
   async saveFx(rate: FxRate) {
     this.fx = rate;
+  }
+  async listCachedQuotes() {
+    return [...this.cachedQuotes];
+  }
+  async upsertCachedQuotes(quotes: Omit<CachedQuote, "updated_at">[]) {
+    for (const q of quotes) {
+      const row: CachedQuote = { ...q, updated_at: now() };
+      const i = this.cachedQuotes.findIndex((c) => c.ticker === q.ticker);
+      if (i >= 0) this.cachedQuotes[i] = row;
+      else this.cachedQuotes.push(row);
+    }
   }
   async listSnapshots() {
     return [...this.snapshots].sort((a, b) => a.date.localeCompare(b.date));

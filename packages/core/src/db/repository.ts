@@ -1,6 +1,7 @@
 import type {
   Alert,
   Analysis,
+  CachedQuote,
   DailyDigest,
   FxRate,
   Lead,
@@ -36,6 +37,9 @@ export interface Repository {
   // fx + snapshots
   latestFx(): Promise<FxRate | null>;
   saveFx(rate: FxRate): Promise<void>;
+  /** Background-refreshed price cache so pages read quotes instantly. */
+  listCachedQuotes(): Promise<CachedQuote[]>;
+  upsertCachedQuotes(quotes: Omit<CachedQuote, "updated_at">[]): Promise<void>;
   listSnapshots(): Promise<PortfolioSnapshot[]>;
   addSnapshot(s: Omit<PortfolioSnapshot, "id">): Promise<PortfolioSnapshot>;
 

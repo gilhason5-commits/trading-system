@@ -70,6 +70,17 @@ export interface FxRate {
   as_of: string;
 }
 
+/** Latest cached price per ticker, refreshed in the background by pollPrices. */
+export interface CachedQuote {
+  ticker: string;
+  market: Market;
+  price: number;
+  percent_change: number;
+  currency: Currency;
+  previous_close: number;
+  updated_at: string;
+}
+
 export interface PortfolioSnapshot {
   id: string;
   date: string;

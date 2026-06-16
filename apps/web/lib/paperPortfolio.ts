@@ -1,12 +1,12 @@
 import {
   computeStats,
   enrichPositions,
-  getMarketData,
   getRepository,
   type PortfolioStats,
   type PositionView,
   type Quote,
 } from "@trading/core";
+import { cachedToQuote, latestUpdate } from "@/lib/portfolio";
 
 /** Enriched paper holding — keeps the row id so it can be removed. */
 export type PaperPositionView = PositionView & { id: string };
@@ -15,43 +15,28 @@ export interface PaperPortfolioData {
   views: PaperPositionView[];
   stats: PortfolioStats;
   usdIls: number;
+  lastUpdated: string | null;
 }
 
-// Separate short-lived price cache so the paper page (a) doesn't hammer Twelve
-// Data's free tier and (b) stays fully isolated from the real dashboard's cache.
-const PRICE_TTL_MS = 60_000;
-let priceCache: { at: number; usdIls: number; quotes: Map<string, Quote> } | null = null;
-
-/** Load + price + enrich the isolated paper portfolio for server components. */
+/**
+ * Load + price + enrich the isolated paper portfolio. Reads from the same
+ * background-refreshed quote cache as the real dashboard, so it loads instantly
+ * and stays fully isolated from real positions/pages.
+ */
 export async function getPaperPortfolio(): Promise<PaperPortfolioData> {
   const repo = getRepository();
-  const md = getMarketData();
+  const [positions, fxRow, cached] = await Promise.all([
+    repo.listPaperPositions(),
+    repo.latestFx(),
+    repo.listCachedQuotes(),
+  ]);
 
-  const [positions, fxRow] = await Promise.all([repo.listPaperPositions(), repo.latestFx()]);
-
-  let usdIls: number;
-  let quotes: Map<string, Quote>;
-  if (priceCache && Date.now() - priceCache.at < PRICE_TTL_MS) {
-    usdIls = priceCache.usdIls;
-    quotes = priceCache.quotes;
-  } else {
-    usdIls = (await md.getUsdIls().catch(() => fxRow?.rate)) ?? fxRow?.rate ?? 3.62;
-    const quotePairs = await Promise.all(
-      positions.map(async (p): Promise<[string, Quote] | null> => {
-        try {
-          return [p.ticker, await md.getQuote(p.ticker, p.market)];
-        } catch {
-          return null; // missing quote → enrichPositions falls back to entry price
-        }
-      }),
-    );
-    quotes = new Map(quotePairs.filter((x): x is [string, Quote] => x !== null));
-    priceCache = { at: Date.now(), usdIls, quotes };
-  }
+  const usdIls = fxRow?.rate ?? 3.62;
+  const quotes = new Map<string, Quote>(cached.map((c) => [c.ticker, cachedToQuote(c)]));
 
   // enrichPositions preserves input order, so re-attach each row's id for removal.
   const enriched = enrichPositions(positions, quotes, usdIls);
   const views: PaperPositionView[] = enriched.map((v, i) => ({ ...v, id: positions[i]!.id }));
   const stats = computeStats(views, usdIls, []); // no equity-curve history for paper
-  return { views, stats, usdIls };
+  return { views, stats, usdIls, lastUpdated: latestUpdate(cached) };
 }

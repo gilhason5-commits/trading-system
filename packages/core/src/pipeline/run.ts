@@ -96,15 +96,37 @@ export async function runDailyPipeline(
  * write a daily snapshot. Safe to call on an interval through the trading day.
  */
 export async function pollPrices(ctx: RunContext = createRunContext()): Promise<void> {
-  const positions = await ctx.repo.listPositions();
+  const [positions, paper] = await Promise.all([ctx.repo.listPositions(), ctx.repo.listPaperPositions()]);
   const usdIls = await ctx.md.getUsdIls();
   await ctx.repo.saveFx({ pair: "USD/ILS", rate: usdIls, as_of: new Date().toISOString() });
 
-  const quotes = new Map<string, Quote>(
-    await Promise.all(
-      positions.map(async (p): Promise<[string, Quote]> => [p.ticker, await ctx.md.getQuote(p.ticker, p.market)]),
-    ),
-  );
+  // Refresh every ticker the pages care about (real holdings + paper book) and
+  // write them to the quote cache so page loads never block on Twelve Data's
+  // 8-req/min throttle. getQuote is internally throttled, so this is sequential.
+  const wanted = new Map<string, (typeof positions)[number]["market"]>();
+  for (const p of positions) wanted.set(p.ticker, p.market);
+  for (const p of paper) wanted.set(p.ticker, p.market);
+
+  const quotes = new Map<string, Quote>();
+  const cacheRows: Omit<import("../types.ts").CachedQuote, "updated_at">[] = [];
+  for (const [ticker, market] of wanted) {
+    try {
+      const q = await ctx.md.getQuote(ticker, market);
+      quotes.set(ticker, q);
+      cacheRows.push({
+        ticker,
+        market,
+        price: q.price,
+        percent_change: q.percent_change,
+        currency: q.currency,
+        previous_close: q.previous_close,
+      });
+    } catch {
+      // skip a ticker the provider can't resolve; keep the rest of the poll alive
+    }
+  }
+  if (cacheRows.length) await ctx.repo.upsertCachedQuotes(cacheRows);
+
   const views = enrichPositions(positions, quotes, usdIls);
   const totalUsd = views.reduce((s, v) => s + v.market_value.usd, 0);
   const totalIls = views.reduce((s, v) => s + v.market_value.ils, 0);

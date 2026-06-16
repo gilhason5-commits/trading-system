@@ -1,13 +1,13 @@
 import { formatDual, formatUsd, type AllocationSlice } from "@trading/core";
 import { AddTransaction } from "@/components/AddTransaction";
-import { PnL, Pct, formatPct } from "@/components/format";
+import { PnL, Pct, formatPct, sinceLabel } from "@/components/format";
 import { Sparkline } from "@/components/Sparkline";
 import { getPortfolio } from "@/lib/portfolio";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const { views, stats, breaches, snapshots, usdIls } = await getPortfolio();
+  const { views, stats, breaches, snapshots, usdIls, lastUpdated } = await getPortfolio();
 
   return (
     <div className="space-y-8">
@@ -15,7 +15,7 @@ export default async function DashboardPage() {
         <div>
           <h1 className="text-2xl font-bold">דשבורד תיק</h1>
           <p className="mt-1 text-sm text-[var(--muted)]">
-            שער USD/ILS: {usdIls.toFixed(3)} · נתוני דמו (mock) עד חיבור מפתחות
+            שער USD/ILS: {usdIls.toFixed(3)} · מחירים {sinceLabel(lastUpdated)}
           </p>
         </div>
         <AddTransaction />

@@ -2,9 +2,9 @@ import {
   computeStats,
   concentrationBreaches,
   enrichPositions,
-  getMarketData,
   getRepository,
   type AllocationSlice,
+  type CachedQuote,
   type PortfolioSnapshot,
   type PortfolioStats,
   type PositionView,
@@ -17,50 +17,45 @@ export interface PortfolioData {
   breaches: AllocationSlice[];
   snapshots: PortfolioSnapshot[];
   usdIls: number;
+  /** ISO time the cached quotes were last refreshed (by pollPrices), or null. */
+  lastUpdated: string | null;
 }
 
-// Short-lived price cache so dashboard reloads don't hammer Twelve Data's
-// 8-req/min free tier (and don't collide with the worker's price polling).
-const PRICE_TTL_MS = 60_000;
-let priceCache: { at: number; usdIls: number; quotes: Map<string, Quote> } | null = null;
+export function cachedToQuote(c: CachedQuote): Quote {
+  return {
+    symbol: c.ticker,
+    price: c.price,
+    currency: c.currency,
+    percent_change: c.percent_change,
+    previous_close: c.previous_close,
+  };
+}
 
-/** Load + price + enrich the whole portfolio for server components. */
+export function latestUpdate(cached: CachedQuote[]): string | null {
+  return cached.reduce<string | null>((m, c) => (!m || c.updated_at > m ? c.updated_at : m), null);
+}
+
+/**
+ * Load + price + enrich the whole portfolio for server components. Prices come
+ * from the background-refreshed quote cache (pollPrices), so the page loads
+ * instantly and never blocks on Twelve Data's 8-req/min throttle.
+ */
 export async function getPortfolio(): Promise<PortfolioData> {
   const repo = getRepository();
-  const md = getMarketData();
-
-  const [positions, fxRow, snapshots, settings] = await Promise.all([
+  const [positions, fxRow, snapshots, settings, cached] = await Promise.all([
     repo.listPositions(),
     repo.latestFx(),
     repo.listSnapshots(),
     repo.getSettings(),
+    repo.listCachedQuotes(),
   ]);
 
-  let usdIls: number;
-  let quotes: Map<string, Quote>;
-  if (priceCache && Date.now() - priceCache.at < PRICE_TTL_MS) {
-    usdIls = priceCache.usdIls;
-    quotes = priceCache.quotes;
-  } else {
-    usdIls = (await md.getUsdIls().catch(() => fxRow?.rate)) ?? fxRow?.rate ?? 3.62;
-    // Resilient per-quote: a single failure/rate-limit must not crash the page —
-    // enrichPositions falls back to avg cost for any missing quote.
-    const quotePairs = await Promise.all(
-      positions.map(async (p): Promise<[string, Quote] | null> => {
-        try {
-          return [p.ticker, await md.getQuote(p.ticker, p.market)];
-        } catch {
-          return null;
-        }
-      }),
-    );
-    quotes = new Map(quotePairs.filter((x): x is [string, Quote] => x !== null));
-    priceCache = { at: Date.now(), usdIls, quotes };
-  }
+  const usdIls = fxRow?.rate ?? 3.62;
+  const quotes = new Map<string, Quote>(cached.map((c) => [c.ticker, cachedToQuote(c)]));
 
   const views = enrichPositions(positions, quotes, usdIls);
   const stats = computeStats(views, usdIls, snapshots);
   const breaches = concentrationBreaches(stats, settings.concentration_threshold);
 
-  return { views, stats, breaches, snapshots, usdIls };
+  return { views, stats, breaches, snapshots, usdIls, lastUpdated: latestUpdate(cached) };
 }

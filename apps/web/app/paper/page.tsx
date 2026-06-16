@@ -1,12 +1,12 @@
 import { formatDual, getRepository } from "@trading/core";
-import { PnL, Pct, formatPct } from "@/components/format";
+import { PnL, Pct, formatPct, sinceLabel } from "@/components/format";
 import { PaperAddForm, PaperRemoveButton } from "@/components/PaperManager";
 import { getPaperPortfolio } from "@/lib/paperPortfolio";
 
 export const dynamic = "force-dynamic";
 
 export default async function PaperPage() {
-  const [{ views, stats, usdIls }, recommendations] = await Promise.all([
+  const [{ views, stats, usdIls, lastUpdated }, recommendations] = await Promise.all([
     getPaperPortfolio(),
     getRepository().listRecommendations(),
   ]);
@@ -27,7 +27,7 @@ export default async function PaperPage() {
         <h1 className="text-2xl font-bold">תיק דמה (מסחר ניסיוני)</h1>
         <p className="mt-1 text-sm text-[var(--muted)]">
           תיק מבודד לבדיקת ההמלצות — מתומחר ומנותח כמו התיק האמיתי, אך אינו משפיע על שאר העמודים.
-          הוספה במחיר השוק הנוכחי. שער USD/ILS: {usdIls.toFixed(3)}
+          הוספה במחיר השוק הנוכחי. שער USD/ILS: {usdIls.toFixed(3)} · מחירים {sinceLabel(lastUpdated)}
         </p>
       </section>
 
