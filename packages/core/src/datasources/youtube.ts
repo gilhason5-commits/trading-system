@@ -1,8 +1,8 @@
-import { getEnv, isLive } from "../env.ts";
+import { getEnv } from "../env.ts";
 
-// YouTube Data API v3 — resolve channel handles, list uploads, fetch captions (spec §3.2).
-// Endpoints: /channels (resolve handle → uploads playlist), /playlistItems (list videos),
-//            timedtext captions (informal endpoint, best-effort).
+// YouTube channel videos via the public per-channel RSS feed — no API key, no
+// quota (resolves @handle → channelId from the channel page, then parses
+// feeds/videos.xml). Captions via the informal timedtext endpoint (best-effort).
 
 export interface VideoRef {
   externalId: string;
@@ -66,64 +66,59 @@ export class MockYouTube implements YouTubeSource {
   }
 }
 
-// ── Live ──────────────────────────────────────────────────────────────────
-const BASE = "https://www.googleapis.com/youtube/v3";
+// ── Live (free, no API key) ─────────────────────────────────────────────────
+const UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
+  "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+const channelIdCache = new Map<string, string>();
 
-interface YTChannelResponse {
-  items?: Array<{
-    contentDetails?: {
-      relatedPlaylists?: { uploads?: string };
-    };
-  }>;
-}
-
-interface YTPlaylistResponse {
-  items?: Array<{
-    snippet?: {
-      resourceId?: { videoId?: string };
-      title?: string;
-      publishedAt?: string;
-    };
-  }>;
+function decodeXml(s: string): string {
+  return s
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'");
 }
 
 export class LiveYouTube implements YouTubeSource {
-  constructor(private readonly apiKey: string) {}
+  private async resolveChannelId(handle: string): Promise<string> {
+    const direct = handle.match(/UC[\w-]{22}/);
+    if (direct) return direct[0];
+    const cached = channelIdCache.get(handle);
+    if (cached) return cached;
 
-  private url(path: string, params: Record<string, string>): string {
-    const usp = new URLSearchParams({ ...params, key: this.apiKey });
-    return `${BASE}${path}?${usp.toString()}`;
-  }
-
-  private async resolveUploadsPlaylist(handle: string): Promise<string> {
-    // Strip the leading @ if present; forHandle expects the bare handle WITH @
-    const forHandle = handle.startsWith("@") ? handle : `@${handle}`;
-    const res = await fetch(
-      this.url("/channels", { part: "contentDetails", forHandle })
-    );
-    if (!res.ok) throw new Error(`YouTube channels ${handle}: HTTP ${res.status}`);
-    const data = (await res.json()) as YTChannelResponse;
-    const playlistId = data.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
-    if (!playlistId) throw new Error(`YouTube: could not resolve uploads playlist for ${handle}`);
-    return playlistId;
+    const url = handle.startsWith("http")
+      ? handle
+      : `https://www.youtube.com/${handle.startsWith("@") ? handle : `@${handle}`}`;
+    const res = await fetch(url, { headers: { "user-agent": UA, "accept-language": "en" } });
+    if (!res.ok) throw new Error(`YouTube channel ${handle}: HTTP ${res.status}`);
+    const html = await res.text();
+    const m = html.match(/"channelId":"(UC[\w-]{22})"/) ?? html.match(/channel\/(UC[\w-]{22})/);
+    if (!m) throw new Error(`YouTube: could not resolve channelId for ${handle}`);
+    channelIdCache.set(handle, m[1]!);
+    return m[1]!;
   }
 
   async listNewVideos(handle: string): Promise<VideoRef[]> {
-    const playlistId = await this.resolveUploadsPlaylist(handle);
-    const res = await fetch(
-      this.url("/playlistItems", { part: "snippet", playlistId, maxResults: "10" })
-    );
-    if (!res.ok) throw new Error(`YouTube playlistItems ${handle}: HTTP ${res.status}`);
-    const data = (await res.json()) as YTPlaylistResponse;
-    return (data.items ?? []).map((item) => {
-      const videoId = item.snippet?.resourceId?.videoId ?? "";
-      return {
-        externalId: videoId,
-        url: `https://youtube.com/watch?v=${videoId}`,
-        title: item.snippet?.title ?? "",
-        publishedAt: item.snippet?.publishedAt ?? "",
-      };
-    });
+    const channelId = await this.resolveChannelId(handle);
+    const res = await fetch(`https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`);
+    if (!res.ok) throw new Error(`YouTube feed ${handle}: HTTP ${res.status}`);
+    const xml = await res.text();
+    const out: VideoRef[] = [];
+    for (const e of xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g)) {
+      const b = e[1]!;
+      const id = b.match(/<yt:videoId>(.*?)<\/yt:videoId>/)?.[1];
+      if (!id) continue;
+      out.push({
+        externalId: id,
+        url: `https://www.youtube.com/watch?v=${id}`,
+        title: decodeXml(b.match(/<title>([\s\S]*?)<\/title>/)?.[1] ?? ""),
+        publishedAt: b.match(/<published>(.*?)<\/published>/)?.[1] ?? new Date().toISOString(),
+      });
+    }
+    return out;
   }
 
   async getCaptions(videoId: string): Promise<string | null> {
@@ -156,8 +151,7 @@ let instance: YouTubeSource | null = null;
 
 export function getYouTube(): YouTubeSource {
   if (instance) return instance;
-  instance = isLive("YOUTUBE_API_KEY")
-    ? new LiveYouTube(getEnv().YOUTUBE_API_KEY!)
-    : new MockYouTube();
+  // The RSS-based live source needs no API key — use it whenever live.
+  instance = getEnv().DATA_MODE === "live" ? new LiveYouTube() : new MockYouTube();
   return instance;
 }

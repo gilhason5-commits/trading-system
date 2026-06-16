@@ -128,18 +128,17 @@ async function fetchYouTubePosts(
   for (const video of videos) {
     if (await ctx.repo.hasPost(sourceId, video.externalId)) continue;
 
-    // Try captions first, fall back to Apify/Whisper transcription
-    let transcript = await ctx.youtube.getCaptions(video.externalId);
-    if (!transcript) {
-      transcript = await ctx.social.transcribe(video.url);
-    }
+    // Captions when available; otherwise the title is the content for signal
+    // extraction (no auto-Whisper — that would cost an Apify run per video).
+    const captions = await ctx.youtube.getCaptions(video.externalId).catch(() => null);
 
     const post = await ctx.repo.addPost({
       source_id: sourceId,
       external_id: video.externalId,
       url: video.url,
       title: video.title,
-      transcript: transcript ?? undefined,
+      text: video.title,
+      transcript: captions ?? undefined,
       published_at: video.publishedAt,
     });
     fresh.push(post);
