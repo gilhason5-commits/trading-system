@@ -35,3 +35,6 @@ coverage/
 
 # playwright mcp artifacts
 .playwright-mcp/
+
+# transient one-off scripts
+packages/core/scripts/
