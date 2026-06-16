@@ -85,18 +85,44 @@ export class LiveX implements XSource {
     return id;
   }
 
+  // Paginate until tweets fall outside ~36h (buffer for the pipeline's 24h filter),
+  // so a full day's tweets are captured even for high-volume accounts. Page-capped.
   async fetchTweets(handle: string): Promise<SocialPost[]> {
     const user = this.normalize(handle);
     const userId = await this.resolveUserId(user);
-    const variables = encodeURIComponent(
-      JSON.stringify({
-        userId,
-        count: 20,
-        includePromotedContent: false,
-        withQuickPromoteEligibilityTweetFields: true,
-        withVoice: true,
-      }),
-    );
+    const cutoff = Date.now() - 36 * 60 * 60 * 1000;
+    const MAX_PAGES = 6;
+
+    const all: SocialPost[] = [];
+    const seen = new Set<string>();
+    let cursor: string | undefined;
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const { tweets, bottomCursor } = await this.fetchPage(user, userId, cursor);
+      const fresh = tweets.filter((t) => t.externalId && !seen.has(t.externalId));
+      for (const t of fresh) seen.add(t.externalId);
+      all.push(...fresh);
+      if (fresh.length === 0 || !bottomCursor) break;
+      const oldest = Math.min(...tweets.map((t) => Date.parse(t.publishedAt)).filter((n) => !Number.isNaN(n)));
+      if (oldest < cutoff) break; // reached far enough back
+      cursor = bottomCursor;
+    }
+    return all;
+  }
+
+  private async fetchPage(
+    user: string,
+    userId: string,
+    cursor?: string,
+  ): Promise<{ tweets: SocialPost[]; bottomCursor?: string }> {
+    const vars: Record<string, unknown> = {
+      userId,
+      count: 20,
+      includePromotedContent: false,
+      withQuickPromoteEligibilityTweetFields: true,
+      withVoice: true,
+    };
+    if (cursor) vars.cursor = cursor;
+    const variables = encodeURIComponent(JSON.stringify(vars));
     const url = `https://x.com/i/api/graphql/${Q_TWEETS}/UserTweets?variables=${variables}&features=${FEATURES_TWEETS}&fieldToggles=${FT_TWEETS}`;
     const res = await fetch(url, { headers: this.headers() });
     if (!res.ok) throw new Error(`X UserTweets ${user}: HTTP ${res.status}`);
@@ -104,28 +130,31 @@ export class LiveX implements XSource {
 
     const instructions =
       ((j as any)?.data?.user?.result?.timeline?.timeline?.instructions as any[]) ?? [];
-    const out: SocialPost[] = [];
+    const tweets: SocialPost[] = [];
+    let bottomCursor: string | undefined;
     for (const ins of instructions) {
       const entries = ins.entries ?? (ins.entry ? [ins.entry] : []);
       for (const e of entries) {
+        if (e?.content?.entryType === "TimelineTimelineCursor" && e?.content?.cursorType === "Bottom") {
+          bottomCursor = e.content.value;
+          continue;
+        }
         const r = e?.content?.itemContent?.tweet_results?.result;
         const core = r?.tweet ?? r;
         const legacy = core?.legacy;
         if (!legacy?.full_text) continue;
-        // For retweets, prefer the full original text.
         const rt = legacy.retweeted_status_result?.result;
         const text = rt?.legacy?.full_text ?? legacy.full_text;
         const id = core?.rest_id ?? legacy.id_str ?? "";
-        const created = legacy.created_at;
-        out.push({
+        tweets.push({
           externalId: id,
           url: `https://x.com/${user}/status/${id}`,
           text: decode(text),
-          publishedAt: created ? new Date(created).toISOString() : new Date().toISOString(),
+          publishedAt: legacy.created_at ? new Date(legacy.created_at).toISOString() : new Date().toISOString(),
         });
       }
     }
-    return out;
+    return { tweets, bottomCursor };
   }
 }
 
