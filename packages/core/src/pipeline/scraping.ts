@@ -69,20 +69,28 @@ export async function runScrapingStage(
           }
 
           for (const { ticker, sentiment, claim } of extracted) {
+            const T = ticker.toUpperCase();
+            // Record the signal (positive/negative/neutral) so the trail/warnings exist.
             const signal = await ctx.repo.addSignal({ post_id: post.id, ticker, sentiment, claim });
             newSignals.push(signal);
 
-            // Upsert lead for real stocks not already held (skip indices/macro).
-            if (!heldTickers.has(ticker.toUpperCase()) && !NON_STOCK.has(ticker.toUpperCase())) {
-              const existing = await ctx.repo.getLeadByTicker(ticker);
-              const lead = await ctx.repo.upsertLead({
-                ticker,
-                market: "US",
-                status: existing?.status ?? "new",
-                mention_count: (existing?.mention_count ?? 0) + 1,
-              });
-              newLeads.push(lead);
-            }
+            const held = heldTickers.has(T);
+
+            // ── Decision per stock (made BEFORE any verification) ──
+            // RECOMMEND: positive discourse on a non-held real stock → lead → verification.
+            // WARN:      negative discourse (esp. on a holding) → surfaced in the UI from
+            //            this recorded signal; no buy lead created.
+            // IGNORE:    neutral mentions, indices/macro, and already-held names.
+            if (held || NON_STOCK.has(T) || sentiment !== "bullish") continue;
+
+            const existing = await ctx.repo.getLeadByTicker(ticker);
+            const lead = await ctx.repo.upsertLead({
+              ticker,
+              market: "US",
+              status: existing?.status ?? "new",
+              mention_count: (existing?.mention_count ?? 0) + 1,
+            });
+            newLeads.push(lead);
           }
         } catch (err) {
           await ctx.repo.addAlert({
