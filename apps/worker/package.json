@@ -7,6 +7,7 @@
   "scripts": {
     "start": "node --env-file-if-exists=../../.env.local --experimental-transform-types src/index.ts",
     "pipeline:dry": "node --env-file-if-exists=../../.env.local --experimental-transform-types src/dry-run.ts",
+    "news:check": "node --env-file-if-exists=../../.env.local --experimental-transform-types src/news-check.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

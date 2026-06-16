@@ -54,14 +54,20 @@ async function buildContext(ctx: RunContext, ticker: string, market: Market) {
     ? news.map((n) => `- ${n.headline}${n.summary ? `: ${n.summary}` : ""}`).join("\n")
     : "n/a";
 
-  return { analysisText, webContextText };
+  // Audit trail: only sources that actually returned data (e.g. FMP 403 → excluded).
+  const verifiedSources: string[] = [];
+  if (technicals) verifiedSources.push("ניתוח טכני (Twelve Data)");
+  if (fundamentals) verifiedSources.push("פונדמנטלי (FMP)");
+  if (news.length) verifiedSources.push("חדשות (Finnhub)");
+
+  return { analysisText, webContextText, verifiedSources };
 }
 
 async function researchOne(ctx: RunContext, lead: Lead): Promise<Recommendation> {
   await ctx.repo.setLeadStatus(lead.id, "researching");
 
   const mentionCount = Math.max(lead.mention_count, await independentSourceCount(ctx, lead.ticker));
-  const { analysisText, webContextText } = await buildContext(ctx, lead.ticker, lead.market);
+  const { analysisText, webContextText, verifiedSources } = await buildContext(ctx, lead.ticker, lead.market);
 
   const prompt = leadScoringPrompt(lead.ticker, mentionCount, analysisText, webContextText);
   const res = await ctx.claude.complete({
@@ -69,7 +75,7 @@ async function researchOne(ctx: RunContext, lead: Lead): Promise<Recommendation>
     system: prompt.system,
     user: prompt.user,
     effort: "medium",
-    maxTokens: 1000,
+    maxTokens: 1500,
   });
   ctx.cost.addClaude(res.usage, res.model);
 
@@ -83,6 +89,7 @@ async function researchOne(ctx: RunContext, lead: Lead): Promise<Recommendation>
     social_score: parsed.social_score,
     rationale: parsed.rationale,
     manipulation_flag: Boolean(parsed.manipulation_flag),
+    verified_sources: verifiedSources,
   });
 
   await ctx.repo.setLeadStatus(lead.id, "recommended");

@@ -26,11 +26,16 @@ async function buildAggregation(ctx: RunContext) {
   ]);
 
   const usdIls = fxRow?.rate ?? 3.62;
-  const quotes = new Map<string, Quote>(
-    await Promise.all(
-      positions.map(async (p): Promise<[string, Quote]> => [p.ticker, await ctx.md.getQuote(p.ticker, p.market)]),
-    ),
+  const quotePairs = await Promise.all(
+    positions.map(async (p): Promise<[string, Quote] | null> => {
+      try {
+        return [p.ticker, await ctx.md.getQuote(p.ticker, p.market)];
+      } catch {
+        return null; // missing quote → enrichPositions falls back to avg_cost
+      }
+    }),
   );
+  const quotes = new Map<string, Quote>(quotePairs.filter((x): x is [string, Quote] => x !== null));
   const views = enrichPositions(positions, quotes, usdIls);
   const stats = computeStats(views, usdIls, snapshots);
 
@@ -73,7 +78,7 @@ export async function runDigestStage(ctx: RunContext): Promise<DailyDigest> {
     system: prompt.system,
     user: prompt.user,
     effort: "high",
-    maxTokens: 4000,
+    maxTokens: 16000, // rich HTML digest can be long; avoid mid-string truncation
   });
   ctx.cost.addClaude(res.usage, res.model);
 

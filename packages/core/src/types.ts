@@ -134,6 +134,8 @@ export interface Recommendation {
   social_score: number;
   rationale: string;
   manipulation_flag: boolean;
+  /** Objective data sources that actually returned data during research (audit). */
+  verified_sources: string[];
   created_at: string;
 }
 

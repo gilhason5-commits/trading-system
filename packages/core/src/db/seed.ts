@@ -150,7 +150,9 @@ export function buildSeed(): Seed {
       id: "rec_1", lead_id: "lead_1", ticker: "SOFI", date: TODAY,
       system_score: 64, social_score: 78,
       rationale: "צמיחת משתמשים חזקה ומעבר לרווחיות; איתות חברתי גבוה אך תמחור דורש זהירות.",
-      manipulation_flag: false, created_at: T(TODAY),
+      manipulation_flag: false,
+      verified_sources: ["ניתוח טכני (Twelve Data)", "חדשות (Finnhub)"],
+      created_at: T(TODAY),
     },
   ];
 

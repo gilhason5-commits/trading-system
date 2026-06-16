@@ -135,8 +135,19 @@ export function getClaude(): ClaudeClient {
   return instance;
 }
 
-/** Parse a JSON response defensively (strips ```json fences if present). */
+/** Parse a JSON response defensively: strip ```fences, else extract the JSON span. */
 export function parseJsonResponse<T>(text: string): T {
   const cleaned = text.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
-  return JSON.parse(cleaned) as T;
+  try {
+    return JSON.parse(cleaned) as T;
+  } catch {
+    // Model wrapped JSON in prose — extract the outermost { } or [ ] span.
+    const starts = ["{", "["].map((c) => cleaned.indexOf(c)).filter((i) => i >= 0);
+    const start = starts.length ? Math.min(...starts) : -1;
+    const end = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
+    if (start >= 0 && end > start) {
+      return JSON.parse(cleaned.slice(start, end + 1)) as T;
+    }
+    throw new SyntaxError("No JSON found in Claude response");
+  }
 }

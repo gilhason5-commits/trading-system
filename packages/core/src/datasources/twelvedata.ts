@@ -72,6 +72,19 @@ export class MockMarketData implements MarketDataSource {
 // ── Live ──────────────────────────────────────────────────────────────────
 const BASE = "https://api.twelvedata.com";
 
+// Free tier allows 8 requests/minute. Serialize + space calls (~7.5/min) so a
+// burst (quote + 4 indicators per position) never trips the per-minute limit.
+const TD_MIN_GAP_MS = 8000;
+let tdNextSlot = 0;
+async function tdFetch(url: string): Promise<Response> {
+  const now = Date.now();
+  const start = Math.max(now, tdNextSlot);
+  tdNextSlot = start + TD_MIN_GAP_MS;
+  const wait = start - now;
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  return fetch(url);
+}
+
 export class LiveMarketData implements MarketDataSource {
   constructor(private readonly apiKey: string) {}
 
@@ -83,7 +96,7 @@ export class LiveMarketData implements MarketDataSource {
   async getQuote(symbol: string, market: Market): Promise<Quote> {
     const params: Record<string, string> = { symbol };
     if (market === "TASE") params.mic_code = "XTAE";
-    const res = await fetch(this.q("/quote", params));
+    const res = await tdFetch(this.q("/quote", params));
     const j = (await res.json()) as Record<string, string>;
     if (j.code || j.status === "error") throw new Error(`twelvedata quote ${symbol}: ${j.message}`);
     return {
@@ -96,7 +109,7 @@ export class LiveMarketData implements MarketDataSource {
   }
 
   async getUsdIls(): Promise<number> {
-    const res = await fetch(this.q("/exchange_rate", { symbol: "USD/ILS" }));
+    const res = await tdFetch(this.q("/exchange_rate", { symbol: "USD/ILS" }));
     const j = (await res.json()) as { rate?: number; message?: string };
     if (!j.rate) throw new Error(`twelvedata fx: ${j.message}`);
     return j.rate;
@@ -107,10 +120,10 @@ export class LiveMarketData implements MarketDataSource {
     if (market === "TASE") base.mic_code = "XTAE";
 
     const [rsiRes, macdRes, sma50Res, sma200Res] = await Promise.all([
-      fetch(this.q("/rsi", { ...base, time_period: "14" })),
-      fetch(this.q("/macd", { ...base, fast_period: "12", slow_period: "26", signal_period: "9" })),
-      fetch(this.q("/sma", { ...base, time_period: "50" })),
-      fetch(this.q("/sma", { ...base, time_period: "200" })),
+      tdFetch(this.q("/rsi", { ...base, time_period: "14" })),
+      tdFetch(this.q("/macd", { ...base, fast_period: "12", slow_period: "26", signal_period: "9" })),
+      tdFetch(this.q("/sma", { ...base, time_period: "50" })),
+      tdFetch(this.q("/sma", { ...base, time_period: "200" })),
     ]);
 
     if (!rsiRes.ok) throw new Error(`twelvedata rsi ${symbol}: HTTP ${rsiRes.status}`);
