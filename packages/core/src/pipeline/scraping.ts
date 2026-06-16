@@ -12,6 +12,13 @@ interface SignalJson {
   claim: string;
 }
 
+// Only consider content published in the last 24h (fresh content per daily run).
+const RECENCY_MS = 24 * 60 * 60 * 1000;
+function isRecent(publishedAt: string): boolean {
+  const t = Date.parse(publishedAt);
+  return Number.isNaN(t) ? false : t >= Date.now() - RECENCY_MS;
+}
+
 /** Run the scraping + signal-extraction stage. Returns only the items created this run. */
 export async function runScrapingStage(
   ctx: RunContext,
@@ -115,7 +122,7 @@ async function fetchYouTubePosts(
   sourceId: string,
   handle: string,
 ): Promise<Post[]> {
-  const videos = await ctx.youtube.listNewVideos(handle);
+  const videos = (await ctx.youtube.listNewVideos(handle)).filter((v) => isRecent(v.publishedAt));
   const fresh: Post[] = [];
 
   for (const video of videos) {
@@ -146,7 +153,7 @@ async function fetchInstagramPosts(
   sourceId: string,
   handle: string,
 ): Promise<Post[]> {
-  const items = await ctx.social.fetchInstagram(handle);
+  const items = (await ctx.social.fetchInstagram(handle)).filter((i) => isRecent(i.publishedAt));
   ctx.cost.addScraping(0.001 * items.length);
   const fresh: Post[] = [];
 
@@ -174,7 +181,7 @@ async function fetchInstagramPosts(
   // whatever text they carry (caption / link sticker); video-story transcription
   // is intentionally NOT auto-run here to avoid runaway Whisper cost.
   try {
-    const stories = await ctx.instagramStories.fetchStories(handle);
+    const stories = (await ctx.instagramStories.fetchStories(handle)).filter((s) => isRecent(s.publishedAt));
     for (const s of stories) {
       if (await ctx.repo.hasPost(sourceId, s.externalId)) continue;
       const post = await ctx.repo.addPost({
@@ -202,7 +209,7 @@ async function fetchTikTokPosts(
   sourceId: string,
   handle: string,
 ): Promise<Post[]> {
-  const items = await ctx.social.fetchTikTok(handle);
+  const items = (await ctx.social.fetchTikTok(handle)).filter((i) => isRecent(i.publishedAt));
   ctx.cost.addScraping(0.001 * items.length);
   const fresh: Post[] = [];
 
@@ -233,7 +240,7 @@ async function fetchRssPosts(
   sourceId: string,
   feedUrl: string,
 ): Promise<Post[]> {
-  const items = await ctx.rss.fetchFeed(feedUrl);
+  const items = (await ctx.rss.fetchFeed(feedUrl)).filter((i) => isRecent(i.publishedAt));
   const fresh: Post[] = [];
 
   for (const item of items) {
