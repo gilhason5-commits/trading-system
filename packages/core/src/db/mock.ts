@@ -14,6 +14,7 @@ import type {
   Settings,
   Signal,
   Source,
+  TrackedRecommendation,
   Transaction,
 } from "../types.ts";
 import type { Repository } from "./repository.ts";
@@ -31,6 +32,7 @@ export class MockRepository implements Repository {
   private positions: Position[];
   private paperPositions: PaperPosition[] = [];
   private cachedQuotes: CachedQuote[] = [];
+  private tracked: TrackedRecommendation[] = [];
   private fx: FxRate;
   private snapshots: PortfolioSnapshot[];
   private analyses: Analysis[];
@@ -199,6 +201,18 @@ export class MockRepository implements Repository {
     const full: Recommendation = { ...r, id: nextId("rec"), created_at: now() };
     this.recommendations.push(full);
     return full;
+  }
+
+  async listTracked() {
+    return [...this.tracked];
+  }
+  async upsertTracked(t: Omit<TrackedRecommendation, "id" | "created_at">) {
+    const i = this.tracked.findIndex((x) => x.ticker.toUpperCase() === t.ticker.toUpperCase());
+    if (i >= 0) this.tracked[i] = { ...this.tracked[i]!, ...t };
+    else this.tracked.push({ ...t, id: nextId("trk"), created_at: now() });
+  }
+  async deleteTracked(id: string) {
+    this.tracked = this.tracked.filter((x) => x.id !== id);
   }
 
   async listDigests() {

@@ -53,6 +53,27 @@ export interface PaperPosition extends Position {
   created_at: string;
 }
 
+/** A recommended ticker followed for 7 days after it's first recommended. */
+export interface TrackedRecommendation {
+  id: string;
+  ticker: string;
+  /** YYYY-MM-DD it was first recommended. */
+  first_date: string;
+  /** YYYY-MM-DD it most recently appeared in the daily recommendations. */
+  last_seen_date: string;
+  /** Price when first tracked (entry), native currency. */
+  entry_price: number | null;
+  entry_currency: Currency | null;
+  initial_social_score: number;
+  last_social_score: number;
+  /** Times it reappeared in the daily recommendations after the first. */
+  reinforce_count: number;
+  sentiment_trend: "new" | "strengthened" | "weakened" | "stable";
+  /** YYYY-MM-DD the 7-day follow window ends. */
+  expires_date: string;
+  created_at: string;
+}
+
 /** A position enriched with live price + P&L, ready for the dashboard. */
 export interface PositionView extends Position {
   price_native: number;

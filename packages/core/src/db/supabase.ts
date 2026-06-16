@@ -15,6 +15,7 @@ import type {
   Settings,
   Signal,
   Source,
+  TrackedRecommendation,
   Transaction,
 } from "../types.ts";
 import type { Repository } from "./repository.ts";
@@ -364,6 +365,27 @@ export class SupabaseRepository implements Repository {
       .single();
     if (error) this.fail(error);
     return data as Recommendation;
+  }
+
+  async listTracked(): Promise<TrackedRecommendation[]> {
+    const { data, error } = await this.db
+      .from("tracked_recommendations")
+      .select("*")
+      .order("last_seen_date", { ascending: false });
+    if (error) this.fail(error);
+    return (data ?? []) as TrackedRecommendation[];
+  }
+
+  async upsertTracked(t: Omit<TrackedRecommendation, "id" | "created_at">): Promise<void> {
+    const { error } = await this.db
+      .from("tracked_recommendations")
+      .upsert(t, { onConflict: "ticker" });
+    if (error) this.fail(error);
+  }
+
+  async deleteTracked(id: string): Promise<void> {
+    const { error } = await this.db.from("tracked_recommendations").delete().eq("id", id);
+    if (error) this.fail(error);
   }
 
   // -------------------------------------------------------------------------

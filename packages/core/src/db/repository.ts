@@ -14,6 +14,7 @@ import type {
   Settings,
   Signal,
   Source,
+  TrackedRecommendation,
   Transaction,
 } from "../types.ts";
 
@@ -65,6 +66,11 @@ export interface Repository {
   setLeadStatus(id: string, status: Lead["status"]): Promise<void>;
   listRecommendations(date?: string): Promise<Recommendation[]>;
   addRecommendation(r: Omit<Recommendation, "id" | "created_at">): Promise<Recommendation>;
+
+  // recommendation tracking (7-day follow)
+  listTracked(): Promise<TrackedRecommendation[]>;
+  upsertTracked(t: Omit<TrackedRecommendation, "id" | "created_at">): Promise<void>;
+  deleteTracked(id: string): Promise<void>;
 
   // digests + runs + alerts + settings
   listDigests(): Promise<DailyDigest[]>;

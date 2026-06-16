@@ -6,6 +6,7 @@ import { runAnalysisStage } from "./analysis.ts";
 import { runScrapingStage } from "./scraping.ts";
 import { runResearchStage } from "./research.ts";
 import { runDigestStage } from "./digest.ts";
+import { runTrackingStage } from "./tracking.ts";
 
 // The daily pipeline (spec §4): analysis → scraping → research → digest, run as one
 // unit that logs total cost to `runs`. Vercel Cron enqueues a trigger; the Worker
@@ -63,6 +64,9 @@ export async function runDailyPipeline(
       recommendations.push(...(await runResearchStage(ctx)));
     }
 
+    // Update the 7-day recommendation tracker from today's recommendations.
+    await runTrackingStage(ctx);
+
     const digest = skipDigest ? null : await runDigestStage(ctx);
 
     const cost = ctx.cost.summary();
@@ -98,16 +102,21 @@ export async function runDailyPipeline(
  * write a daily snapshot. Safe to call on an interval through the trading day.
  */
 export async function pollPrices(ctx: RunContext = createRunContext()): Promise<void> {
-  const [positions, paper] = await Promise.all([ctx.repo.listPositions(), ctx.repo.listPaperPositions()]);
+  const [positions, paper, tracked] = await Promise.all([
+    ctx.repo.listPositions(),
+    ctx.repo.listPaperPositions(),
+    ctx.repo.listTracked(),
+  ]);
   const usdIls = await ctx.md.getUsdIls();
   await ctx.repo.saveFx({ pair: "USD/ILS", rate: usdIls, as_of: new Date().toISOString() });
 
-  // Refresh every ticker the pages care about (real holdings + paper book) and
-  // write them to the quote cache so page loads never block on Twelve Data's
-  // 8-req/min throttle. getQuote is internally throttled, so this is sequential.
+  // Refresh every ticker the pages care about (real holdings + paper book +
+  // tracked recommendations) into the quote cache so page loads never block on a
+  // live quote. Finnhub quotes are fast and not daily-capped.
   const wanted = new Map<string, (typeof positions)[number]["market"]>();
   for (const p of positions) wanted.set(p.ticker, p.market);
   for (const p of paper) wanted.set(p.ticker, p.market);
+  for (const t of tracked) if (!wanted.has(t.ticker)) wanted.set(t.ticker, "US");
 
   const quotes = new Map<string, Quote>();
   const cacheRows: Omit<import("../types.ts").CachedQuote, "updated_at">[] = [];

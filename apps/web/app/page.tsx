@@ -1,4 +1,4 @@
-import { formatDual, formatUsd, type AllocationSlice } from "@trading/core";
+import { formatDual, formatUsd, getRepository, type AllocationSlice, type Run } from "@trading/core";
 import { AddTransaction } from "@/components/AddTransaction";
 import { PnL, Pct, formatPct, sinceLabel } from "@/components/format";
 import { Sparkline } from "@/components/Sparkline";
@@ -7,7 +7,13 @@ import { getPortfolio } from "@/lib/portfolio";
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const { views, stats, snapshots, usdIls, lastUpdated } = await getPortfolio();
+  const [{ views, stats, snapshots, usdIls, lastUpdated }, runs] = await Promise.all([
+    getPortfolio(),
+    getRepository().listRuns(),
+  ]);
+  const lastRun = runs
+    .slice()
+    .sort((a, b) => (b.started_at ?? b.date).localeCompare(a.started_at ?? a.date))[0];
 
   return (
     <div className="space-y-8">
@@ -41,6 +47,8 @@ export default async function DashboardPage() {
           sub={`max DD ${stats.max_drawdown_pct.toFixed(1)}%`}
         />
       </section>
+
+      {lastRun && <RunCost run={lastRun} />}
 
       <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
         <div className="mb-2 flex items-baseline justify-between">
@@ -89,6 +97,23 @@ export default async function DashboardPage() {
         </div>
       </section>
     </div>
+  );
+}
+
+function RunCost({ run }: { run: Run }) {
+  return (
+    <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
+      <div className="mb-3 flex items-baseline justify-between">
+        <h2 className="text-lg font-semibold">עלות ריצה יומית</h2>
+        <span className="text-xs text-[var(--muted)]">{run.date} · {run.status}</span>
+      </div>
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <Stat label="טוקנים (in/out)" value={`${run.tokens_in.toLocaleString()} / ${run.tokens_out.toLocaleString()}`} />
+        <Stat label="Claude" value={formatUsd(run.claude_cost)} />
+        <Stat label="סקרייפינג" value={formatUsd(run.scraping_cost)} />
+        <Stat label='סה"כ' value={formatUsd(run.total_cost)} />
+      </div>
+    </section>
   );
 }
 

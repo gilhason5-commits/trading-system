@@ -82,7 +82,6 @@ async function buildAggregation(ctx: RunContext) {
       ticker: r.ticker, system_score: r.system_score, social_score: r.social_score,
       manipulation_flag: r.manipulation_flag, rationale: r.rationale,
     })),
-    cost: ctx.cost.summary(),
   };
 
   return { aggregation };

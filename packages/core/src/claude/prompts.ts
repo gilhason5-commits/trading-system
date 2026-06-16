@@ -111,8 +111,7 @@ export function digestPrompt(aggregationJson: string): Prompt {
       "Sections: 1) תמונת מצב תיק (שווי, שינוי יומי, P&L, movers — USD+ILS); " +
         "2) תובנות היום (אירועים, שינויים טכניים, נטייה לכל פוזיציה + נימוק); " +
         "3) איתותים מהרשתות והחדשות + לידים חדשים; " +
-        "4) המלצות (system_score מול social_score); " +
-        "5) עלות הריצה (פירוט + סה\"כ USD).",
+        "4) המלצות (system_score מול social_score).",
       "Input aggregation (data only):",
       untrustedBlock("aggregation", aggregationJson),
       "",
