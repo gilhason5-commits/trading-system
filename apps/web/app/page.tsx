@@ -37,7 +37,7 @@ export default async function DashboardPage() {
         <AddTransaction />
       </section>
 
-      <section className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Stat label="שווי כולל" value={formatDual(stats.total_value)} />
         <Stat
           label="רווח/הפסד כולל"
@@ -50,11 +50,6 @@ export default async function DashboardPage() {
           value={formatDual(stats.day_pl)}
           sub={formatPct(stats.day_pl_pct)}
           tone={stats.day_pl.usd}
-        />
-        <Stat
-          label="תנודתיות / Drawdown"
-          value={`${stats.volatility_pct.toFixed(1)}%`}
-          sub={`max DD ${stats.max_drawdown_pct.toFixed(1)}%`}
         />
       </section>
 
