@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { TradingViewChart } from "@/components/TradingViewChart";
 
 export interface TrailItem {
   type: string;
@@ -11,6 +12,8 @@ export interface TrailItem {
 
 export interface RecCard {
   id: string;
+  /** 0-based position in the day's ranking (top picks first). */
+  rank: number;
   ticker: string;
   date: string;
   system_score: number;
@@ -80,7 +83,9 @@ export function RecommendationGrid({ cards }: { cards: RecCard[] }) {
           onClick={() => setOpen(null)}
         >
           <div
-            className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6"
+            className={`max-h-[85vh] w-full overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6 ${
+              open.rank < 3 ? "max-w-2xl" : "max-w-lg"
+            }`}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-4 flex items-center justify-between">
@@ -107,6 +112,15 @@ export function RecommendationGrid({ cards }: { cards: RecCard[] }) {
             </div>
 
             <p className="mb-4 text-sm text-[var(--muted)]">{open.rationale}</p>
+
+            {open.rank < 3 && (
+              <div className="mb-4">
+                <div className="mb-1 text-xs font-semibold text-[var(--muted)]">
+                  📈 גרף + ניתוח טכני (SMA50 · SMA200 · RSI · MACD)
+                </div>
+                <TradingViewChart symbol={open.ticker} />
+              </div>
+            )}
 
             <div className="space-y-3 rounded-md border border-[var(--border)] bg-[var(--background)] p-3">
               <div className="text-xs font-semibold text-[var(--muted)]">מסלול החשיבה</div>

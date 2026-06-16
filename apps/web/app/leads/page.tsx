@@ -99,10 +99,11 @@ export default async function LeadsPage() {
   const latestDate = verifiedAll.reduce((m, r) => (r.date > m ? r.date : m), "");
   const verified = verifiedAll.filter((r) => r.date === latestDate);
 
-  const cards: RecCard[] = verified.map((rec) => {
+  const cards: RecCard[] = verified.map((rec, i) => {
     const trail = buildTrail(rec.ticker, signals, postsById, sourcesById);
     return {
       id: rec.id,
+      rank: i,
       ticker: rec.ticker,
       date: rec.date,
       system_score: rec.system_score,
