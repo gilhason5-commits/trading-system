@@ -1,10 +1,12 @@
+import { blendConviction, fundamentalScore, socialScore, technicalScore } from "../scoring.ts";
 import type { RunContext } from "./context.ts";
 
 // Recommendation tracking (7-day follow). After the research stage, today's
 // verified recommendations are upserted into tracked_recommendations: a brand-new
 // ticker is added with its entry price; one that reappears on a later day is
 // reinforced and its sentiment trend (strengthened/weakened/stable) recorded.
-// Entries are dropped once their 7-day window passes.
+// Entries are dropped once their 7-day window passes. Finally a conviction pass
+// recomputes technical+fundamental+social → blended buy-conviction for each.
 
 function addDays(date: string, days: number): string {
   const d = new Date(`${date}T00:00:00Z`);
@@ -71,5 +73,59 @@ export async function runTrackingStage(ctx: RunContext): Promise<void> {
   // Drop entries whose 7-day window has passed.
   for (const t of existing.values()) {
     if (t.expires_date < ctx.date) await ctx.repo.deleteTracked(t.id);
+  }
+
+  // ── Conviction pass: technical + fundamental + social → blended buy-conviction,
+  // recomputed daily so a name strengthens toward >80 buy / <20 (i.e. >80 sell).
+  const signals = await ctx.repo.listSignals();
+  const bullBear = new Map<string, { bull: number; bear: number }>();
+  for (const s of signals) {
+    const k = s.ticker.toUpperCase();
+    const e = bullBear.get(k) ?? { bull: 0, bear: 0 };
+    if (s.sentiment === "bullish") e.bull++;
+    else if (s.sentiment === "bearish") e.bear++;
+    bullBear.set(k, e);
+  }
+  const priceByTicker = new Map(
+    (await ctx.repo.listCachedQuotes()).map((c) => [c.ticker.toUpperCase(), c.price]),
+  );
+
+  for (const t of await ctx.repo.listTracked()) {
+    if (t.expires_date < ctx.date) continue;
+    const market = marketByTicker.get(t.ticker.toUpperCase()) ?? "US";
+
+    let technical = 50;
+    try {
+      const tech = await ctx.md.getTechnicals(t.ticker, market);
+      technical = technicalScore(tech, priceByTicker.get(t.ticker.toUpperCase()) ?? null);
+    } catch {
+      // no technicals (e.g. crypto/ETF on this provider) → stay neutral
+    }
+    let fundamental = 50;
+    try {
+      fundamental = fundamentalScore(await ctx.fundamentals.getFundamentals(t.ticker));
+    } catch {
+      // no fundamentals → stay neutral
+    }
+    const bb = bullBear.get(t.ticker.toUpperCase()) ?? { bull: 0, bear: 0 };
+    const social = socialScore(bb.bull, bb.bear);
+    const conviction = blendConviction(technical, fundamental, social);
+
+    await ctx.repo.upsertTracked({
+      ticker: t.ticker,
+      first_date: t.first_date,
+      last_seen_date: t.last_seen_date,
+      entry_price: t.entry_price,
+      entry_currency: t.entry_currency,
+      initial_social_score: t.initial_social_score,
+      last_social_score: t.last_social_score,
+      reinforce_count: t.reinforce_count,
+      sentiment_trend: t.sentiment_trend,
+      expires_date: t.expires_date,
+      technical_score: technical,
+      fundamental_score: fundamental,
+      social_score: social,
+      conviction,
+    });
   }
 }

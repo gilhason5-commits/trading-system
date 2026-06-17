@@ -71,6 +71,11 @@ export interface TrackedRecommendation {
   sentiment_trend: "new" | "strengthened" | "weakened" | "stable";
   /** YYYY-MM-DD the 7-day follow window ends. */
   expires_date: string;
+  /** Daily conviction breakdown (0–100, 50 neutral); blended buy-conviction. */
+  technical_score?: number | null;
+  fundamental_score?: number | null;
+  social_score?: number | null;
+  conviction?: number | null;
   created_at: string;
 }
 

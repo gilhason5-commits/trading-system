@@ -12,8 +12,11 @@ export interface TrackedRow {
   entry_currency: string | null;
   current: number | null;
   ret: number | null;
-  /** % of bull/bear mentions that are bullish (buy lean); null if no signed mentions. */
-  buyPct: number | null;
+  /** Blended buy-conviction 0–100 (≥80 strong buy, ≤20 strong sell), + breakdown. */
+  conviction: number | null;
+  technical: number | null;
+  fundamental: number | null;
+  social: number | null;
   /** ISO time of the most recent bullish / bearish mention. */
   lastBull: string | null;
   lastBear: string | null;
@@ -34,15 +37,23 @@ function fmtWhen(iso: string | null): string {
   }).format(new Date(iso));
 }
 
-function Sentiment({ buyPct }: { buyPct: number | null }) {
-  if (buyPct === null) return <span className="text-[var(--muted)]">—</span>;
-  const sellPct = 100 - buyPct;
+function Conviction({ row }: { row: TrackedRow }) {
+  const c = row.conviction;
+  if (c === null) return <span className="text-[var(--muted)]">—</span>;
+  let cls = "text-[var(--muted)]";
+  let label: string;
+  if (c >= 80) { cls = "pos"; label = `קנייה חזקה ${c}%`; }
+  else if (c >= 60) { cls = "pos"; label = `קנייה ${c}%`; }
+  else if (c <= 20) { cls = "neg"; label = `מכירה חזקה ${100 - c}%`; }
+  else if (c <= 40) { cls = "neg"; label = `מכירה ${100 - c}%`; }
+  else label = `נייטרלי ${c}%`;
   return (
-    <span className="whitespace-nowrap font-semibold">
-      <span className="pos">▲{buyPct}% קנייה</span>
-      <span className="text-[var(--muted)]"> · </span>
-      <span className="neg">▼{sellPct}% מכירה</span>
-    </span>
+    <div className="whitespace-nowrap">
+      <span className={`font-semibold ${cls}`}>{label}</span>
+      <div className="text-[10px] text-[var(--muted)]">
+        ט {row.technical ?? "—"} · פ {row.fundamental ?? "—"} · ח {row.social ?? "—"}
+      </div>
+    </div>
   );
 }
 
@@ -53,7 +64,7 @@ export function TrackedTable({ rows }: { rows: TrackedRow[] }) {
     return <p className="text-sm text-[var(--muted)]">אין עדיין מניות במעקב.</p>;
   }
 
-  const headers = ["מניה", "יום", "מחיר כניסה", "נוכחי", "תשואה", "סנטימנט (קנייה/מכירה)", "אזכור חיובי אחרון", "אזכור שלילי אחרון", "חיזוקים"];
+  const headers = ["מניה", "יום", "מחיר כניסה", "נוכחי", "תשואה", "Conviction (ט/פ/ח)", "אזכור חיובי אחרון", "אזכור שלילי אחרון", "חיזוקים"];
 
   return (
     <>
@@ -82,7 +93,7 @@ export function TrackedTable({ rows }: { rows: TrackedRow[] }) {
                 <td className="px-3 py-2">{r.entry_price ? `${r.entry_price.toLocaleString()} ${r.entry_currency ?? ""}` : "—"}</td>
                 <td className="px-3 py-2">{r.current !== null ? r.current.toLocaleString() : "—"}</td>
                 <td className="px-3 py-2">{r.ret !== null ? <Pct value={r.ret} /> : "—"}</td>
-                <td className="px-3 py-2"><Sentiment buyPct={r.buyPct} /></td>
+                <td className="px-3 py-2"><Conviction row={r} /></td>
                 <td className="px-3 py-2 whitespace-nowrap text-[var(--muted)]">{fmtWhen(r.lastBull)}</td>
                 <td className="px-3 py-2 whitespace-nowrap text-[var(--muted)]">{fmtWhen(r.lastBear)}</td>
                 <td className="px-3 py-2">
