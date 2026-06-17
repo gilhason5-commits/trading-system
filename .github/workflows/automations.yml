@@ -1,0 +1,72 @@
+name: automations
+
+# Cloud scheduler (runs in GitHub's infra, no Mac needed). Israel time shifts with
+# DST, and GitHub cron is UTC, so each job is scheduled at BOTH the IDT and IST
+# UTC-equivalents; the once-a-day DB guards make sure it only really runs once.
+on:
+  schedule:
+    - cron: "30 11 * * *" # scrape — 14:30 Israel (IDT / summer)
+    - cron: "30 12 * * *" # scrape — 14:30 Israel (IST / winter)
+    - cron: "0 20 * * *" # digest — 23:00 Israel (IDT)
+    - cron: "0 21 * * *" # digest — 23:00 Israel (IST)
+    - cron: "*/30 13-21 * * 1-5" # price refresh — US market hours, weekdays
+  workflow_dispatch:
+    inputs:
+      job:
+        description: "which job to run manually: scrape | digest | poll"
+        required: true
+        default: poll
+
+env:
+  DATA_MODE: live
+  CLAUDE_MODEL: claude-sonnet-4-6
+  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+  SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+  FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+  TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
+  FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+  IG_SESSION: ${{ secrets.IG_SESSION }}
+  X_AUTH_TOKEN: ${{ secrets.X_AUTH_TOKEN }}
+  X_CT0: ${{ secrets.X_CT0 }}
+
+jobs:
+  scrape:
+    if: github.event.schedule == '30 11 * * *' || github.event.schedule == '30 12 * * *' || github.event.inputs.job == 'scrape'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: npm run scrape --workspace @trading/worker
+
+  digest:
+    if: github.event.schedule == '0 20 * * *' || github.event.schedule == '0 21 * * *' || github.event.inputs.job == 'digest'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: npm run digest --workspace @trading/worker
+
+  poll:
+    if: github.event.schedule == '*/30 13-21 * * 1-5' || github.event.inputs.job == 'poll'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: npm run poll --workspace @trading/worker
