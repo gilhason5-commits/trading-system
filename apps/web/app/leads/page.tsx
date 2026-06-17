@@ -1,6 +1,7 @@
 import { getRepository, type Post, type Recommendation, type Signal, type Source } from "@trading/core";
 import { RecommendationGrid, type RecCard, type TrailItem } from "@/components/RecommendationGrid";
-import { Pct, UpdatedNote } from "@/components/format";
+import { TrackedTable, type TrackedRow } from "@/components/TrackedTable";
+import { UpdatedNote } from "@/components/format";
 
 export const dynamic = "force-dynamic";
 
@@ -50,13 +51,6 @@ function quality(r: Recommendation): number {
 function distinctSources(items: TrailItem[]): string[] {
   return [...new Set(items.map((i) => i.handle).filter((h) => h && h !== "—"))];
 }
-
-const TREND_LABEL: Record<string, string> = {
-  new: "חדש",
-  strengthened: "התחזק ↑",
-  weakened: "נחלש ↓",
-  stable: "יציב",
-};
 
 export default async function LeadsPage() {
   const repo = getRepository();
@@ -124,19 +118,55 @@ export default async function LeadsPage() {
 
   const crossSource = cards.filter((c) => c.sources.length >= 2);
 
-  // Tracking: enrich each tracked ticker with current price + performance.
-  const trackingRows = tracked
+  // Latest recommendation per ticker → used for the tracked-item analysis modal.
+  const recByTicker = new Map<string, Recommendation>();
+  for (const r of recommendations) {
+    const k = r.ticker.toUpperCase();
+    const ex = recByTicker.get(k);
+    if (!ex || r.date > ex.date) recByTicker.set(k, r);
+  }
+
+  // Tracking: enrich each tracked ticker with price/performance + clickable analysis.
+  const trackingRows: TrackedRow[] = tracked
     .slice()
     .sort((a, b) => b.last_seen_date.localeCompare(a.last_seen_date))
     .map((t) => {
       const cur = priceByTicker.get(t.ticker.toUpperCase());
-      const ret =
-        t.entry_price && cur ? ((cur.price - t.entry_price) / t.entry_price) * 100 : null;
+      const ret = t.entry_price && cur ? ((cur.price - t.entry_price) / t.entry_price) * 100 : null;
       const dayN = Math.min(
         7,
         Math.floor((Date.parse(`${todayStr}T00:00:00Z`) - Date.parse(`${t.first_date}T00:00:00Z`)) / 86_400_000) + 1,
       );
-      return { t, current: cur?.price ?? null, ret, dayN };
+      const rec = recByTicker.get(t.ticker.toUpperCase());
+      const trail = buildTrail(t.ticker, signals, postsById, sourcesById);
+      const detail: RecCard | null = rec
+        ? {
+            id: rec.id,
+            rank: 99, // no chart in the tracking modal
+            ticker: rec.ticker,
+            date: rec.date,
+            system_score: rec.system_score,
+            social_score: rec.social_score,
+            manipulation_flag: rec.manipulation_flag,
+            rationale: rec.rationale,
+            verified_sources: rec.verified_sources ?? [],
+            trail,
+            sources: distinctSources(trail),
+          }
+        : null;
+      return {
+        id: t.id,
+        ticker: t.ticker,
+        dayN,
+        entry_price: t.entry_price,
+        entry_currency: t.entry_currency,
+        current: cur?.price ?? null,
+        ret,
+        sentiment_trend: t.sentiment_trend,
+        reinforce_count: t.reinforce_count,
+        last_seen_date: t.last_seen_date,
+        detail,
+      };
     });
 
   return (
@@ -155,46 +185,9 @@ export default async function LeadsPage() {
         <h2 className="mb-1 text-lg font-semibold">📋 מעקב המלצות (7 ימים)</h2>
         <p className="mb-3 text-xs text-[var(--muted)]">
           המלצות מהימים האחרונים — ביצוע מאז ההמלצה, וחיזוק אם הופיעו שוב (כולל אם הסנטימנט התחזק או נחלש).
+          לחץ על שם מניה לניתוח ולמקורות.
         </p>
-        {trackingRows.length === 0 ? (
-          <p className="text-sm text-[var(--muted)]">אין עדיין מניות במעקב.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-[var(--muted)]">
-                <tr>
-                  {["מניה", "יום", "מחיר כניסה", "מחיר נוכחי", "תשואה", "סנטימנט", "חיזוקים", "נראה לאחרונה"].map((h) => (
-                    <th key={h} className="whitespace-nowrap px-3 py-2 text-right font-medium">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {trackingRows.map(({ t, current, ret, dayN }) => (
-                  <tr key={t.id} className="border-t border-[var(--border)]">
-                    <td className="px-3 py-2 font-semibold">{t.ticker}</td>
-                    <td className="px-3 py-2 text-[var(--muted)]">{dayN}/7</td>
-                    <td className="px-3 py-2">{t.entry_price ? `${t.entry_price.toLocaleString()} ${t.entry_currency ?? ""}` : "—"}</td>
-                    <td className="px-3 py-2">{current !== null ? current.toLocaleString() : "—"}</td>
-                    <td className="px-3 py-2">{ret !== null ? <Pct value={ret} /> : "—"}</td>
-                    <td className="px-3 py-2">
-                      <span className={t.sentiment_trend === "strengthened" ? "pos" : t.sentiment_trend === "weakened" ? "neg" : ""}>
-                        {TREND_LABEL[t.sentiment_trend] ?? t.sentiment_trend}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2">
-                      {t.reinforce_count > 0 ? (
-                        <span className="rounded bg-[var(--pos)] px-2 py-0.5 text-xs font-semibold text-black">×{t.reinforce_count}</span>
-                      ) : (
-                        <span className="text-[var(--muted)]">—</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-[var(--muted)]">{t.last_seen_date}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <TrackedTable rows={trackingRows} />
       </section>
 
       {crossSource.length > 0 && (

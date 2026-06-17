@@ -39,6 +39,87 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
   );
 }
 
+/** Shared detail modal: scores, rationale, (chart for top picks), trail + sources. */
+export function RecDetailModal({ card, onClose }: { card: RecCard; onClose: () => void }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      onClick={onClose}
+    >
+      <div
+        className={`max-h-[85vh] w-full overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6 ${
+          card.rank < 3 ? "max-w-2xl" : "max-w-lg"
+        }`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl font-bold">{card.ticker}</span>
+            <span className="text-xs text-[var(--muted)]">{card.date}</span>
+            {card.sources.length >= 2 && (
+              <span className="rounded bg-[var(--pos)] px-2 py-0.5 text-xs font-semibold text-black">
+                🔥 {card.sources.length} מקורות
+              </span>
+            )}
+            {card.manipulation_flag && (
+              <span className="rounded bg-[var(--neg)] px-2 py-0.5 text-xs font-semibold text-white">
+                ⚠ חשד מניפולציה
+              </span>
+            )}
+          </div>
+          <button onClick={onClose} className="text-[var(--muted)] hover:text-[var(--text)]">✕</button>
+        </div>
+
+        <div className="mb-4 grid grid-cols-2 gap-3">
+          <ScoreBar label="ציון מערכת" value={card.system_score} />
+          <ScoreBar label="ציון חברתי" value={card.social_score} />
+        </div>
+
+        <p className="mb-4 text-sm text-[var(--muted)]">{card.rationale}</p>
+
+        {card.rank < 3 && (
+          <div className="mb-4">
+            <div className="mb-1 text-xs font-semibold text-[var(--muted)]">
+              📈 גרף + ניתוח טכני (SMA50 · SMA200 · RSI · MACD)
+            </div>
+            <TradingViewChart symbol={card.ticker} />
+          </div>
+        )}
+
+        <div className="space-y-3 rounded-md border border-[var(--border)] bg-[var(--background)] p-3">
+          <div className="text-xs font-semibold text-[var(--muted)]">מסלול החשיבה</div>
+          <div>
+            <div className="text-xs text-[var(--muted)]">מאיפה הגיע:</div>
+            {card.trail.length === 0 ? (
+              <div className="text-sm text-[var(--muted)]">—</div>
+            ) : (
+              <ul className="mt-1 space-y-1">
+                {card.trail.map((it, i) => (
+                  <li key={i} className="text-sm">
+                    <span>{it.type}</span> ·{" "}
+                    <a href={it.url} target="_blank" rel="noreferrer" className="font-semibold hover:underline">
+                      {it.handle}
+                    </a>
+                    {it.claim && <span className="text-[var(--muted)]"> — “{it.claim}”</span>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div>
+            <div className="text-xs text-[var(--muted)]">איפה אומת:</div>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {card.verified_sources.map((v, i) => (
+                <span key={i} className="rounded bg-[var(--surface)] px-2 py-0.5 text-xs">✓ {v}</span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function RecommendationGrid({ cards }: { cards: RecCard[] }) {
   const [open, setOpen] = useState<RecCard | null>(null);
 
@@ -77,83 +158,7 @@ export function RecommendationGrid({ cards }: { cards: RecCard[] }) {
         ))}
       </div>
 
-      {open && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-          onClick={() => setOpen(null)}
-        >
-          <div
-            className={`max-h-[85vh] w-full overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6 ${
-              open.rank < 3 ? "max-w-2xl" : "max-w-lg"
-            }`}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <span className="text-2xl font-bold">{open.ticker}</span>
-                <span className="text-xs text-[var(--muted)]">{open.date}</span>
-                {open.sources.length >= 2 && (
-                  <span className="rounded bg-[var(--pos)] px-2 py-0.5 text-xs font-semibold text-black">
-                    🔥 {open.sources.length} מקורות
-                  </span>
-                )}
-                {open.manipulation_flag && (
-                  <span className="rounded bg-[var(--neg)] px-2 py-0.5 text-xs font-semibold text-white">
-                    ⚠ חשד מניפולציה
-                  </span>
-                )}
-              </div>
-              <button onClick={() => setOpen(null)} className="text-[var(--muted)] hover:text-[var(--text)]">✕</button>
-            </div>
-
-            <div className="mb-4 grid grid-cols-2 gap-3">
-              <ScoreBar label="ציון מערכת" value={open.system_score} />
-              <ScoreBar label="ציון חברתי" value={open.social_score} />
-            </div>
-
-            <p className="mb-4 text-sm text-[var(--muted)]">{open.rationale}</p>
-
-            {open.rank < 3 && (
-              <div className="mb-4">
-                <div className="mb-1 text-xs font-semibold text-[var(--muted)]">
-                  📈 גרף + ניתוח טכני (SMA50 · SMA200 · RSI · MACD)
-                </div>
-                <TradingViewChart symbol={open.ticker} />
-              </div>
-            )}
-
-            <div className="space-y-3 rounded-md border border-[var(--border)] bg-[var(--background)] p-3">
-              <div className="text-xs font-semibold text-[var(--muted)]">מסלול החשיבה</div>
-              <div>
-                <div className="text-xs text-[var(--muted)]">מאיפה הגיע:</div>
-                {open.trail.length === 0 ? (
-                  <div className="text-sm text-[var(--muted)]">—</div>
-                ) : (
-                  <ul className="mt-1 space-y-1">
-                    {open.trail.map((it, i) => (
-                      <li key={i} className="text-sm">
-                        <span>{it.type}</span> ·{" "}
-                        <a href={it.url} target="_blank" rel="noreferrer" className="font-semibold hover:underline">
-                          {it.handle}
-                        </a>
-                        {it.claim && <span className="text-[var(--muted)]"> — “{it.claim}”</span>}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              <div>
-                <div className="text-xs text-[var(--muted)]">איפה אומת:</div>
-                <div className="mt-1 flex flex-wrap gap-1.5">
-                  {open.verified_sources.map((v, i) => (
-                    <span key={i} className="rounded bg-[var(--surface)] px-2 py-0.5 text-xs">✓ {v}</span>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {open && <RecDetailModal card={open} onClose={() => setOpen(null)} />}
     </>
   );
 }
