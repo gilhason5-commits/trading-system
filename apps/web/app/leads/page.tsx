@@ -54,12 +54,11 @@ function distinctSources(items: TrailItem[]): string[] {
 
 export default async function LeadsPage() {
   const repo = getRepository();
-  const [recommendations, signals, posts, sources, positions, tracked, cached, runs] = await Promise.all([
+  const [recommendations, signals, posts, sources, tracked, cached, runs] = await Promise.all([
     repo.listRecommendations(),
     repo.listSignals(),
     repo.listPosts(),
     repo.listSources(),
-    repo.listPositions(),
     repo.listTracked(),
     repo.listCachedQuotes(),
     repo.listRuns(),
@@ -72,25 +71,7 @@ export default async function LeadsPage() {
   const postsById = new Map(posts.map((p) => [p.id, p]));
   const sourcesById = new Map(sources.map((s) => [s.id, s]));
   const priceByTicker = new Map(cached.map((c) => [c.ticker.toUpperCase(), c]));
-  const held = new Set(positions.map((p) => p.ticker.toUpperCase()));
   const todayStr = new Date().toISOString().slice(0, 10);
-
-  // Warnings: negative discourse (bearish signals), holdings first.
-  const warnings = signals
-    .filter((s) => s.sentiment === "bearish")
-    .map((s) => {
-      const post = postsById.get(s.post_id);
-      const source = post ? sourcesById.get(post.source_id) : undefined;
-      return {
-        ticker: s.ticker,
-        isHeld: held.has(s.ticker.toUpperCase()),
-        type: source ? discoveryType(source.platform, post!.external_id) : "מקור",
-        handle: source?.handle ?? "—",
-        claim: s.claim,
-        url: post?.url ?? "#",
-      };
-    })
-    .sort((a, b) => Number(b.isHeld) - Number(a.isHeld));
 
   // Verified recommendations, latest run only, ranked best → worst.
   const verifiedAll = recommendations
@@ -223,27 +204,6 @@ export default async function LeadsPage() {
         </section>
       )}
 
-      {warnings.length > 0 && (
-        <section className="rounded-lg border border-[var(--neg)] bg-[var(--surface)] p-4">
-          <h2 className="mb-2 text-lg font-semibold">⚠ אזהרות — שיח שלילי</h2>
-          <p className="mb-2 text-xs text-[var(--muted)]">מניות שדוברו לרעה במקורות (אחזקות שלך מסומנות).</p>
-          <ul className="space-y-1 text-sm">
-            {warnings.map((w, i) => (
-              <li key={i}>
-                <span className="font-bold neg">{w.ticker}</span>
-                {w.isHeld && (
-                  <span className="mx-1 rounded bg-[var(--neg)] px-2 py-0.5 text-xs font-semibold text-white">בתיק</span>
-                )}
-                <span className="text-[var(--muted)]">
-                  {" "}
-                  {w.type} ·{" "}
-                  <a href={w.url} target="_blank" rel="noreferrer" className="hover:underline">{w.handle}</a> — “{w.claim}”
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
     </div>
   );
 }

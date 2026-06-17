@@ -20,6 +20,8 @@ export interface NewsSentiment {
 export interface NewsSource {
   getNews(ticker: string, from: string, to: string): Promise<NewsItem[]>;
   getSentiment(ticker: string): Promise<NewsSentiment>;
+  /** General market / macro headlines (not ticker-specific). */
+  getMarketNews(): Promise<NewsItem[]>;
 }
 
 // ── Mock ──────────────────────────────────────────────────────────────────
@@ -113,6 +115,12 @@ export class MockNews implements NewsSource {
   async getSentiment(ticker: string): Promise<NewsSentiment> {
     return MOCK_SENTIMENT[ticker] ?? DEFAULT_SENTIMENT;
   }
+  async getMarketNews(): Promise<NewsItem[]> {
+    return [
+      { headline: "Fed holds rates; signals data-dependent path", url: "https://example.com/macro-1", datetime: new Date().toISOString(), source: "Reuters" },
+      { headline: "Semis rally on AI demand as broader market stays mixed", url: "https://example.com/macro-2", datetime: new Date().toISOString(), source: "Bloomberg" },
+    ];
+  }
 }
 
 // ── Live ──────────────────────────────────────────────────────────────────
@@ -163,6 +171,19 @@ export class LiveNews implements NewsSource {
       bullish > bearish + 0.1 ? "bullish" :
       bearish > bullish + 0.1 ? "bearish" : "neutral";
     return { score, sentiment };
+  }
+
+  async getMarketNews(): Promise<NewsItem[]> {
+    const res = await fetch(this.url("/news", { category: "general" }));
+    if (!res.ok) throw new Error(`Finnhub market news: HTTP ${res.status}`);
+    const items = (await res.json()) as FinnhubNewsItem[];
+    return items.slice(0, 12).map((i) => ({
+      headline: i.headline ?? "",
+      url: i.url ?? "",
+      datetime: i.datetime != null ? new Date(i.datetime * 1000).toISOString() : "",
+      source: i.source ?? "",
+      summary: i.summary,
+    }));
   }
 }
 

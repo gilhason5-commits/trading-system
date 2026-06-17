@@ -114,11 +114,15 @@ export function digestPrompt(aggregationJson: string): Prompt {
       " You are also writing a daily summary email in Hebrew, right-to-left (RTL).",
     user: [
       "Write the daily portfolio digest email in Hebrew (RTL HTML).",
-      "Sections: 1) תמונת מצב תיק (שווי, שינוי יומי, P&L, movers — USD+ILS); " +
-        "2) תובנות היום (אירועים, שינויים טכניים, נטייה לכל פוזיציה + נימוק); " +
-        "3) איתותים מהרשתות והחדשות + לידים חדשים; " +
-        "4) המלצות (system_score מול social_score); " +
-        "5) תחזיות אנליסטים לפוזיציות בתיק (analyst_forecasts): לכל מניה — יעד מחיר קונצנזוס + " +
+      "This digest is ONLY about the user's portfolio. Do NOT include: a portfolio snapshot/value/P&L " +
+        "section (it's on the dashboard), social-network signals, or new stock leads/recommendations " +
+        "(those live on the leads page). Exactly three sections:",
+      "1) תובנות היום — לכל מניה בתיק (analyses) המלצה ברורה ובולטת: **למכור/לצמצם** (stance=trim), " +
+        "**לחזק/להוסיף** (stance=add), או **להמשיך להחזיק** (stance=hold) — עם נימוק קצר משילוב טכני+פונדמנטלי, " +
+        "אירועים מרכזיים (key_events) וסיכונים (risk_flags).",
+      "2) חדשות ואירועים — הרחב כאן: חדשות מאקרו/שוק כלליות (market_news) ואירועים גדולים, " +
+        "וחדשות מיקרו ספציפיות לכל מניה בתיק (portfolio_news). הסבר בקצרה את הרלוונטיות לתיק.",
+      "3) תחזיות אנליסטים לפוזיציות בתיק (analyst_forecasts): לכל מניה — יעד מחיר קונצנזוס + " +
         "פוטנציאל עלייה (upside_pct) + הקונצנזוס, ודירוגי בתי ההשקעות הגדולים (big_banks). " +
         "אם big_banks ריק, ציין שאין דירוג עדכני מבתי ההשקעות הגדולים.",
       "Input aggregation (data only):",

@@ -1,7 +1,5 @@
 import { digestPrompt } from "../claude/index.ts";
 import { fetchAnalystData } from "../datasources/analysts.ts";
-import { computeStats, enrichPositions } from "../portfolio.ts";
-import type { Quote } from "../datasources/twelvedata.ts";
 import type { DailyDigest } from "../types.ts";
 import type { RunContext } from "./context.ts";
 
@@ -37,27 +35,28 @@ function parseDigest(text: string): { html: string; key_insights: string[] } {
 }
 
 async function buildAggregation(ctx: RunContext) {
-  const [positions, fxRow, snapshots, analyses, recommendations, leads, cached] = await Promise.all([
+  const [positions, analyses] = await Promise.all([
     ctx.repo.listPositions(),
-    ctx.repo.latestFx(),
-    ctx.repo.listSnapshots(),
     ctx.repo.listAnalyses(ctx.date),
-    ctx.repo.listRecommendations(ctx.date),
-    ctx.repo.listLeads(),
-    ctx.repo.listCachedQuotes(),
   ]);
 
-  // Read prices from the same background-refreshed quote cache the dashboard uses,
-  // so the digest's portfolio numbers (incl. daily change) match it exactly.
-  const usdIls = fxRow?.rate ?? 3.62;
-  const quotes = new Map<string, Quote>(
-    cached.map((c) => [
-      c.ticker,
-      { symbol: c.ticker, price: c.price, currency: c.currency, percent_change: c.percent_change, previous_close: c.previous_close },
-    ]),
+  // News window: last 4 days.
+  const fromD = new Date(`${ctx.date}T00:00:00Z`);
+  fromD.setUTCDate(fromD.getUTCDate() - 4);
+  const from = fromD.toISOString().slice(0, 10);
+
+  // Macro: general market headlines. Micro: per-held-position headlines.
+  const marketNews = await ctx.news.getMarketNews().catch(() => []);
+  const portfolioNews = await Promise.all(
+    positions.map(async (p) => {
+      try {
+        const items = (await ctx.news.getNews(p.ticker, from, ctx.date)).slice(0, 4);
+        return { ticker: p.ticker, headlines: items.map((i) => i.headline).filter(Boolean) };
+      } catch {
+        return { ticker: p.ticker, headlines: [] as string[] };
+      }
+    }),
   );
-  const views = enrichPositions(positions, quotes, usdIls);
-  const stats = computeStats(views, usdIls, snapshots);
 
   // Analyst forecasts (consensus target + big-bank ratings) per held position.
   const analysts = await Promise.all(
@@ -71,23 +70,13 @@ async function buildAggregation(ctx: RunContext) {
   );
 
   const aggregation = {
-    portfolio: {
-      total_value: stats.total_value,
-      day_pl: stats.day_pl,
-      day_pl_pct: stats.day_pl_pct,
-      total_pl: stats.total_pl,
-      movers: views
-        .slice()
-        .sort((a, b) => Math.abs(b.day_change_pct) - Math.abs(a.day_change_pct))
-        .slice(0, 3)
-        .map((v) => ({ ticker: v.ticker, day_change_pct: v.day_change_pct })),
-    },
-    positions: views.map((v) => ({ ticker: v.ticker, weight_pct: v.weight_pct, pl_pct: v.unrealized_pl_pct })),
     analyses: analyses.map((a) => ({
       ticker: a.ticker, stance: a.stance, confidence: a.confidence,
       technical: a.technical_summary, fundamental: a.fundamental_summary,
       key_events: a.key_events, risk_flags: a.risk_flags,
     })),
+    market_news: marketNews.slice(0, 10).map((i) => `${i.headline} (${i.source})`),
+    portfolio_news: portfolioNews.filter((p) => p.headlines.length > 0),
     analyst_forecasts: analysts
       .filter((a) => a !== null)
       .map((a) => ({
@@ -97,11 +86,6 @@ async function buildAggregation(ctx: RunContext) {
         consensus: a!.recommendation,
         big_banks: a!.big_bank_ratings.map((r) => `${r.firm}: ${r.grade} (${r.date})`),
       })),
-    leads: leads.map((l) => ({ ticker: l.ticker, status: l.status, mentions: l.mention_count })),
-    recommendations: recommendations.map((r) => ({
-      ticker: r.ticker, system_score: r.system_score, social_score: r.social_score,
-      manipulation_flag: r.manipulation_flag, rationale: r.rationale,
-    })),
   };
 
   return { aggregation };
