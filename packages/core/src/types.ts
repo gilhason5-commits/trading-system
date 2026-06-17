@@ -87,6 +87,8 @@ export interface PositionView extends Position {
   unrealized_pl: Dual;
   unrealized_pl_pct: number;
   day_change_pct: number;
+  /** Today's gain/loss in money (qty × (price − previous close)). */
+  day_pl: Dual;
   weight_pct: number;
 }
 

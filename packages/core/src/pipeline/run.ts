@@ -138,6 +138,25 @@ export async function pollPrices(ctx: RunContext = createRunContext()): Promise<
   }
   if (cacheRows.length) await ctx.repo.upsertCachedQuotes(cacheRows);
 
+  // Self-healing sector backfill: fill the sector for any position missing one
+  // (one-time per ticker) so the dashboard's sector allocation is accurate.
+  if (positions.some((p) => !p.sector)) {
+    const withSectors = await Promise.all(
+      positions.map(async (p) => {
+        if (p.sector) return p;
+        try {
+          const f = await ctx.fundamentals.getFundamentals(p.ticker);
+          return f.sector ? { ...p, sector: f.sector } : p;
+        } catch {
+          return p;
+        }
+      }),
+    );
+    if (withSectors.some((p, i) => p.sector !== positions[i]!.sector)) {
+      await ctx.repo.upsertPositions(withSectors);
+    }
+  }
+
   const views = enrichPositions(positions, quotes, usdIls);
   const totalUsd = views.reduce((s, v) => s + v.market_value.usd, 0);
   const totalIls = views.reduce((s, v) => s + v.market_value.ils, 0);

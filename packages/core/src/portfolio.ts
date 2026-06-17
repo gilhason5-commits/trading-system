@@ -62,13 +62,15 @@ export function enrichPositions(
     const quote = quotes.get(p.ticker);
     const priceNative = quote?.price ?? p.avg_cost;
     const dayChange = quote?.percent_change ?? 0;
+    const prevClose = quote?.previous_close ?? priceNative;
 
     const marketValue = toDual(priceNative * p.qty, p.currency, usdIls);
     const costBasis = toDual(p.avg_cost * p.qty, p.currency, usdIls);
     const pl: Dual = { usd: marketValue.usd - costBasis.usd, ils: marketValue.ils - costBasis.ils };
     const plPct = costBasis.usd !== 0 ? (pl.usd / costBasis.usd) * 100 : 0;
+    const dayPl = toDual((priceNative - prevClose) * p.qty, p.currency, usdIls);
 
-    return { p, priceNative, dayChange, marketValue, costBasis, pl, plPct };
+    return { p, priceNative, dayChange, marketValue, costBasis, pl, plPct, dayPl };
   });
 
   const totalValueUsd = priced.reduce((s, x) => s + x.marketValue.usd, 0);
@@ -81,6 +83,7 @@ export function enrichPositions(
     unrealized_pl: x.pl,
     unrealized_pl_pct: x.plPct,
     day_change_pct: x.dayChange,
+    day_pl: x.dayPl,
     weight_pct: totalValueUsd !== 0 ? (x.marketValue.usd / totalValueUsd) * 100 : 0,
   }));
 }
