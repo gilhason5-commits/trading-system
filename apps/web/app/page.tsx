@@ -1,6 +1,6 @@
 import { formatDual, formatUsd, getRepository, type AllocationSlice } from "@trading/core";
 import { AddTransaction } from "@/components/AddTransaction";
-import { PnL, Pct, formatPct, sinceLabel } from "@/components/format";
+import { PnL, Pct, formatPct, UpdatedNote } from "@/components/format";
 import { Sparkline } from "@/components/Sparkline";
 import { getPortfolio } from "@/lib/portfolio";
 
@@ -30,8 +30,10 @@ export default async function DashboardPage() {
       <section className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">דשבורד תיק</h1>
-          <p className="mt-1 text-sm text-[var(--muted)]">
-            שער USD/ILS: {usdIls.toFixed(3)} · מחירים {sinceLabel(lastUpdated)}
+          <p className="mt-1 flex flex-wrap items-center gap-x-2 text-sm text-[var(--muted)]">
+            <span>שער USD/ILS: {usdIls.toFixed(3)}</span>
+            <span>·</span>
+            <UpdatedNote when={lastUpdated} />
           </p>
         </div>
         <AddTransaction />

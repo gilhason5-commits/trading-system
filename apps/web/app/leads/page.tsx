@@ -1,6 +1,6 @@
 import { getRepository, type Post, type Recommendation, type Signal, type Source } from "@trading/core";
 import { RecommendationGrid, type RecCard, type TrailItem } from "@/components/RecommendationGrid";
-import { Pct } from "@/components/format";
+import { Pct, UpdatedNote } from "@/components/format";
 
 export const dynamic = "force-dynamic";
 
@@ -60,7 +60,7 @@ const TREND_LABEL: Record<string, string> = {
 
 export default async function LeadsPage() {
   const repo = getRepository();
-  const [recommendations, signals, posts, sources, positions, tracked, cached] = await Promise.all([
+  const [recommendations, signals, posts, sources, positions, tracked, cached, runs] = await Promise.all([
     repo.listRecommendations(),
     repo.listSignals(),
     repo.listPosts(),
@@ -68,7 +68,13 @@ export default async function LeadsPage() {
     repo.listPositions(),
     repo.listTracked(),
     repo.listCachedQuotes(),
+    repo.listRuns(),
   ]);
+  // "Last updated" = when the recommendation engine last finished a run.
+  const lastRun = runs
+    .slice()
+    .sort((a, b) => (b.started_at ?? b.date).localeCompare(a.started_at ?? a.date))[0];
+  const lastUpdated = lastRun?.finished_at ?? lastRun?.started_at ?? null;
   const postsById = new Map(posts.map((p) => [p.id, p]));
   const sourcesById = new Map(sources.map((s) => [s.id, s]));
   const priceByTicker = new Map(cached.map((c) => [c.ticker.toUpperCase(), c]));
@@ -135,7 +141,10 @@ export default async function LeadsPage() {
 
   return (
     <div className="space-y-8">
-      <h1 className="text-2xl font-bold">לידים והמלצות</h1>
+      <div>
+        <h1 className="text-2xl font-bold">לידים והמלצות</h1>
+        <p className="mt-1"><UpdatedNote when={lastUpdated} /></p>
+      </div>
 
       <section>
         <h2 className="mb-4 text-lg font-semibold">המלצות מאומתות ({cards.length}) — לחץ על כרטיס להסבר</h2>
