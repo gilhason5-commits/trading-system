@@ -1,4 +1,5 @@
 import { digestPrompt } from "../claude/index.ts";
+import { fetchAnalystData } from "../datasources/analysts.ts";
 import { computeStats, enrichPositions } from "../portfolio.ts";
 import type { Quote } from "../datasources/twelvedata.ts";
 import type { DailyDigest } from "../types.ts";
@@ -58,6 +59,17 @@ async function buildAggregation(ctx: RunContext) {
   const views = enrichPositions(positions, quotes, usdIls);
   const stats = computeStats(views, usdIls, snapshots);
 
+  // Analyst forecasts (consensus target + big-bank ratings) per held position.
+  const analysts = await Promise.all(
+    positions.map(async (p) => {
+      try {
+        return await fetchAnalystData(p.ticker);
+      } catch {
+        return null;
+      }
+    }),
+  );
+
   const aggregation = {
     portfolio: {
       total_value: stats.total_value,
@@ -76,6 +88,15 @@ async function buildAggregation(ctx: RunContext) {
       technical: a.technical_summary, fundamental: a.fundamental_summary,
       key_events: a.key_events, risk_flags: a.risk_flags,
     })),
+    analyst_forecasts: analysts
+      .filter((a) => a !== null)
+      .map((a) => ({
+        ticker: a!.ticker,
+        target_mean: a!.target_mean,
+        upside_pct: a!.upside_pct,
+        consensus: a!.recommendation,
+        big_banks: a!.big_bank_ratings.map((r) => `${r.firm}: ${r.grade} (${r.date})`),
+      })),
     leads: leads.map((l) => ({ ticker: l.ticker, status: l.status, mentions: l.mention_count })),
     recommendations: recommendations.map((r) => ({
       ticker: r.ticker, system_score: r.system_score, social_score: r.social_score,

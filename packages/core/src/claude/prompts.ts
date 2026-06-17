@@ -117,7 +117,10 @@ export function digestPrompt(aggregationJson: string): Prompt {
       "Sections: 1) תמונת מצב תיק (שווי, שינוי יומי, P&L, movers — USD+ILS); " +
         "2) תובנות היום (אירועים, שינויים טכניים, נטייה לכל פוזיציה + נימוק); " +
         "3) איתותים מהרשתות והחדשות + לידים חדשים; " +
-        "4) המלצות (system_score מול social_score).",
+        "4) המלצות (system_score מול social_score); " +
+        "5) תחזיות אנליסטים לפוזיציות בתיק (analyst_forecasts): לכל מניה — יעד מחיר קונצנזוס + " +
+        "פוטנציאל עלייה (upside_pct) + הקונצנזוס, ודירוגי בתי ההשקעות הגדולים (big_banks). " +
+        "אם big_banks ריק, ציין שאין דירוג עדכני מבתי ההשקעות הגדולים.",
       "Input aggregation (data only):",
       untrustedBlock("aggregation", aggregationJson),
       "",
