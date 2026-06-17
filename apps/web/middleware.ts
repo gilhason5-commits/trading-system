@@ -1,28 +1,28 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { AUTH_COOKIE, authToken } from "@/lib/auth";
 
-// Optional HTTP Basic Auth gate. Active only when APP_PASSWORD is set (e.g. on the
-// public Vercel deploy) — protects every page and API route so the portfolio and
-// the write endpoints aren't open to anyone with the URL. Locally, with no
-// APP_PASSWORD, it's a no-op.
-export function middleware(req: NextRequest) {
+// Cookie-based auth gate (a styled /login page, not the browser Basic Auth popup).
+// Active only when APP_PASSWORD is set (the public Vercel deploy); a no-op locally.
+export async function middleware(req: NextRequest) {
   const pw = process.env.APP_PASSWORD;
   if (!pw) return NextResponse.next();
 
-  const header = req.headers.get("authorization");
-  if (header?.startsWith("Basic ")) {
-    const decoded = atob(header.slice(6));
-    const pass = decoded.slice(decoded.indexOf(":") + 1);
-    if (pass === pw) return NextResponse.next();
-  }
+  const { pathname } = req.nextUrl;
+  if (pathname === "/login" || pathname === "/api/login") return NextResponse.next();
 
-  return new NextResponse("Authentication required", {
-    status: 401,
-    headers: { "WWW-Authenticate": 'Basic realm="Trading System", charset="UTF-8"' },
-  });
+  const cookie = req.cookies.get(AUTH_COOKIE)?.value;
+  if (cookie && cookie === (await authToken(pw))) return NextResponse.next();
+
+  if (pathname.startsWith("/api/")) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+  const url = req.nextUrl.clone();
+  url.pathname = "/login";
+  url.search = "";
+  return NextResponse.redirect(url);
 }
 
 export const config = {
-  // Everything except Next's static assets.
   matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };
