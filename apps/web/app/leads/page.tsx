@@ -137,6 +137,25 @@ export default async function LeadsPage() {
         7,
         Math.floor((Date.parse(`${todayStr}T00:00:00Z`) - Date.parse(`${t.first_date}T00:00:00Z`)) / 86_400_000) + 1,
       );
+      // Live sentiment from this ticker's mentions: bullish vs bearish, + when
+      // each side was last heard. Shifts as new mentions come in each run.
+      let bull = 0;
+      let bear = 0;
+      let lastBull: string | null = null;
+      let lastBear: string | null = null;
+      for (const s of signals) {
+        if (s.ticker.toUpperCase() !== t.ticker.toUpperCase()) continue;
+        const when = postsById.get(s.post_id)?.published_at ?? s.created_at;
+        if (s.sentiment === "bullish") {
+          bull++;
+          if (!lastBull || when > lastBull) lastBull = when;
+        } else if (s.sentiment === "bearish") {
+          bear++;
+          if (!lastBear || when > lastBear) lastBear = when;
+        }
+      }
+      const buyPct = bull + bear > 0 ? Math.round((bull / (bull + bear)) * 100) : null;
+
       const rec = recByTicker.get(t.ticker.toUpperCase());
       const trail = buildTrail(t.ticker, signals, postsById, sourcesById);
       const detail: RecCard | null = rec
@@ -162,9 +181,10 @@ export default async function LeadsPage() {
         entry_currency: t.entry_currency,
         current: cur?.price ?? null,
         ret,
-        sentiment_trend: t.sentiment_trend,
+        buyPct,
+        lastBull,
+        lastBear,
         reinforce_count: t.reinforce_count,
-        last_seen_date: t.last_seen_date,
         detail,
       };
     });
