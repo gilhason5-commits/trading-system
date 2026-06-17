@@ -45,9 +45,17 @@ export function fundamentalScore(f: Fundamentals): number {
   return clamp(s);
 }
 
-/** Social lean from bullish vs bearish mention counts (50 when none). */
+/**
+ * Social lean from bullish vs bearish mentions, dampened by volume so a single
+ * mention can't read as 100% conviction — it takes ~5 consistent mentions to
+ * reach the extreme. 50 = neutral / no mentions.
+ */
 export function socialScore(bull: number, bear: number): number {
-  return bull + bear > 0 ? clamp((bull / (bull + bear)) * 100) : 50;
+  const total = bull + bear;
+  if (total === 0) return 50;
+  const lean = (bull / total) * 100; // 0–100 direction
+  const confidence = Math.min(1, total / 5); // 5+ mentions ⇒ full weight
+  return clamp(50 + (lean - 50) * confidence);
 }
 
 /** Weighted buy-conviction (0–100). */

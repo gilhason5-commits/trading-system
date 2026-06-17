@@ -1,5 +1,6 @@
 import { getEnv, isLive } from "../env.ts";
 import type { Currency, Market } from "../types.ts";
+import { fetchHistoricalTechnicals } from "./technicals.ts";
 
 // Twelve Data — prices, FX, technicals for all three markets (spec §3.2).
 // Step 2 needs quotes + FX; technicals (for Module 2) land with Step 3's full
@@ -210,8 +211,13 @@ export class HybridMarketData implements MarketDataSource {
     return 3.6; // last-resort fallback
   }
 
-  getTechnicals(symbol: string, market: Market): Promise<Technicals> {
-    return this.td.getTechnicals(symbol, market);
+  async getTechnicals(symbol: string, market: Market): Promise<Technicals> {
+    // Prefer free/unlimited stooq-computed indicators; Twelve Data as fallback.
+    try {
+      return await fetchHistoricalTechnicals(symbol, market);
+    } catch {
+      return this.td.getTechnicals(symbol, market);
+    }
   }
 }
 
