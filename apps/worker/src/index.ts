@@ -9,12 +9,13 @@ import {
 
 // Dedicated Worker (spec §2): polls prices through the trading day and runs two
 // scheduled jobs in Israel time — the recommendation pipeline (analysis +
-// scraping + research) at 14:30, and the daily digest at 22:35. Long jobs run
-// here, not in time-limited Vercel functions.
+// scraping + research) at 14:30, and the daily digest at 23:00, right after the
+// US market close (16:00 ET ≈ 23:00 Israel year-round), so it reflects end-of-day
+// data. Long jobs run here, not in time-limited Vercel functions.
 
 const POLL_MS = 5 * 60 * 1000; // 5 minutes
 const SCRAPE_TIME = "14:30"; // recommendations / scraping run (Israel time)
-const DIGEST_TIME = "22:35"; // daily digest (Israel time)
+const DIGEST_TIME = "23:00"; // daily digest, just after US close (Israel time)
 
 function israelHm(): string {
   return new Intl.DateTimeFormat("en-GB", {
