@@ -82,6 +82,8 @@ async function buildAggregation(ctx: RunContext) {
       .map((a) => ({
         ticker: a!.ticker,
         target_mean: a!.target_mean,
+        target_low: a!.target_low,
+        target_high: a!.target_high,
         upside_pct: a!.upside_pct,
         consensus: a!.recommendation,
         big_banks: a!.big_bank_ratings.map((r) => `${r.firm}: ${r.grade} (${r.date})`),

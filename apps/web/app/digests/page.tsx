@@ -32,22 +32,7 @@ export default async function DigestsPage() {
                 <UpdatedNote when={digest.created_at ?? null} />
               </div>
 
-              {digest.key_insights.length > 0 && (
-                <div className="mb-4">
-                  <div className="mb-1 text-xs text-[var(--muted)]">תובנות מפתח</div>
-                  <ul className="space-y-1 text-sm">
-                    {digest.key_insights.map((insight, i) => (
-                      <li key={i} className="flex gap-2">
-                        <span className="text-[var(--muted)]">•</span>
-                        <span>{insight}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              <div className="border-t border-[var(--border)] pt-4">
-                <div className="mb-2 text-xs text-[var(--muted)]">סיכום מלא</div>
+              <div>
                 <div
                   dir="rtl"
                   className="prose-sm max-w-none rounded border border-[var(--border)] bg-[var(--background)] p-3 text-sm text-[var(--text)]"
