@@ -78,7 +78,7 @@ export default async function DashboardPage() {
           <table className="w-full text-sm">
             <thead className="bg-[var(--surface)] text-[var(--muted)]">
               <tr>
-                {["טיקר", "שוק", "כמות", "מחיר", "יומי", "רווח/הפסד יומי", "שווי", "רווח/הפסד", "%", "משקל"].map((h) => (
+                {["טיקר", "שוק", "כמות", "מחיר כניסה", "מחיר נוכחי", "יומי", "רווח/הפסד יומי", "שווי", "רווח/הפסד", "%", "משקל"].map((h) => (
                   <th key={h} className="whitespace-nowrap px-3 py-2 text-right font-medium">{h}</th>
                 ))}
               </tr>
@@ -91,6 +91,7 @@ export default async function DashboardPage() {
                   </td>
                   <td className="px-3 py-2">{v.market}</td>
                   <td className="px-3 py-2">{v.qty}</td>
+                  <td className="px-3 py-2">{v.avg_cost.toLocaleString()} {v.currency}</td>
                   <td className="px-3 py-2">{v.price_native.toLocaleString()} {v.currency}</td>
                   <td className="px-3 py-2"><Pct value={v.day_change_pct} /></td>
                   <td className="px-3 py-2"><PnL d={v.day_pl} /></td>
