@@ -26,48 +26,31 @@ export async function runTrackingStage(ctx: RunContext): Promise<void> {
     (await ctx.repo.listLeads()).map((l) => [l.ticker.toUpperCase(), l.market]),
   );
 
+  // Add brand-new tickers from today's recommendations (reinforcement of
+  // already-tracked names is handled in the conviction pass below).
   for (const r of recs) {
-    const cur = existing.get(r.ticker.toUpperCase());
-    if (!cur) {
-      // New ticker — capture entry price for performance tracking.
-      let entryPrice: number | null = null;
-      let entryCurrency: "USD" | "ILS" | null = null;
-      try {
-        const q = await ctx.md.getQuote(r.ticker, marketByTicker.get(r.ticker.toUpperCase()) ?? "US");
-        entryPrice = q.price;
-        entryCurrency = q.currency;
-      } catch {
-        // leave entry price null; performance just won't be shown
-      }
-      await ctx.repo.upsertTracked({
-        ticker: r.ticker,
-        first_date: ctx.date,
-        last_seen_date: ctx.date,
-        entry_price: entryPrice,
-        entry_currency: entryCurrency,
-        initial_social_score: r.social_score,
-        last_social_score: r.social_score,
-        reinforce_count: 0,
-        sentiment_trend: "new",
-        expires_date: addDays(ctx.date, 7),
-      });
-    } else if (cur.last_seen_date !== ctx.date) {
-      // Reappeared on a new day → reinforce and record sentiment trend.
-      const delta = r.social_score - cur.last_social_score;
-      const trend = delta > 2 ? "strengthened" : delta < -2 ? "weakened" : "stable";
-      await ctx.repo.upsertTracked({
-        ticker: cur.ticker,
-        first_date: cur.first_date,
-        last_seen_date: ctx.date,
-        entry_price: cur.entry_price,
-        entry_currency: cur.entry_currency,
-        initial_social_score: cur.initial_social_score,
-        last_social_score: r.social_score,
-        reinforce_count: cur.reinforce_count + 1,
-        sentiment_trend: trend,
-        expires_date: cur.expires_date,
-      });
+    if (existing.has(r.ticker.toUpperCase())) continue;
+    let entryPrice: number | null = null;
+    let entryCurrency: "USD" | "ILS" | null = null;
+    try {
+      const q = await ctx.md.getQuote(r.ticker, marketByTicker.get(r.ticker.toUpperCase()) ?? "US");
+      entryPrice = q.price;
+      entryCurrency = q.currency;
+    } catch {
+      // leave entry price null; performance just won't be shown
     }
+    await ctx.repo.upsertTracked({
+      ticker: r.ticker,
+      first_date: ctx.date,
+      last_seen_date: ctx.date,
+      entry_price: entryPrice,
+      entry_currency: entryCurrency,
+      initial_social_score: r.social_score,
+      last_social_score: r.social_score,
+      reinforce_count: 0,
+      sentiment_trend: "new",
+      expires_date: addDays(ctx.date, 7),
+    });
   }
 
   // Drop entries whose 7-day window has passed.
@@ -75,16 +58,21 @@ export async function runTrackingStage(ctx: RunContext): Promise<void> {
     if (t.expires_date < ctx.date) await ctx.repo.deleteTracked(t.id);
   }
 
-  // ── Conviction pass: technical + fundamental + social → blended buy-conviction,
-  // recomputed daily so a name strengthens toward >80 buy / <20 (i.e. >80 sell).
+  // ── Conviction + reinforcement pass. Recompute technical+fundamental+social →
+  // blended buy-conviction; and if a tracked ticker got a fresh bullish/bearish
+  // mention today, reinforce it (count++, last-seen=today, trend vs prior social).
   const signals = await ctx.repo.listSignals();
   const bullBear = new Map<string, { bull: number; bear: number }>();
+  const mentionedToday = new Set<string>();
   for (const s of signals) {
     const k = s.ticker.toUpperCase();
     const e = bullBear.get(k) ?? { bull: 0, bear: 0 };
     if (s.sentiment === "bullish") e.bull++;
     else if (s.sentiment === "bearish") e.bear++;
     bullBear.set(k, e);
+    if ((s.created_at ?? "").slice(0, 10) === ctx.date && (s.sentiment === "bullish" || s.sentiment === "bearish")) {
+      mentionedToday.add(k);
+    }
   }
   const priceByTicker = new Map(
     (await ctx.repo.listCachedQuotes()).map((c) => [c.ticker.toUpperCase(), c.price]),
@@ -92,12 +80,13 @@ export async function runTrackingStage(ctx: RunContext): Promise<void> {
 
   for (const t of await ctx.repo.listTracked()) {
     if (t.expires_date < ctx.date) continue;
-    const market = marketByTicker.get(t.ticker.toUpperCase()) ?? "US";
+    const key = t.ticker.toUpperCase();
+    const market = marketByTicker.get(key) ?? "US";
 
     let technical = 50;
     try {
       const tech = await ctx.md.getTechnicals(t.ticker, market);
-      technical = technicalScore(tech, priceByTicker.get(t.ticker.toUpperCase()) ?? null);
+      technical = technicalScore(tech, priceByTicker.get(key) ?? null);
     } catch {
       // no technicals (e.g. crypto/ETF on this provider) → stay neutral
     }
@@ -107,20 +96,31 @@ export async function runTrackingStage(ctx: RunContext): Promise<void> {
     } catch {
       // no fundamentals → stay neutral
     }
-    const bb = bullBear.get(t.ticker.toUpperCase()) ?? { bull: 0, bear: 0 };
+    const bb = bullBear.get(key) ?? { bull: 0, bear: 0 };
     const social = socialScore(bb.bull, bb.bear);
     const conviction = blendConviction(technical, fundamental, social);
+
+    // Reinforce on a fresh mention today (not for names first added today).
+    let reinforce = t.reinforce_count;
+    let lastSeen = t.last_seen_date;
+    let trend = t.sentiment_trend;
+    if (mentionedToday.has(key) && t.last_seen_date < ctx.date) {
+      reinforce += 1;
+      lastSeen = ctx.date;
+      const delta = social - (t.social_score ?? t.last_social_score);
+      trend = delta > 2 ? "strengthened" : delta < -2 ? "weakened" : "stable";
+    }
 
     await ctx.repo.upsertTracked({
       ticker: t.ticker,
       first_date: t.first_date,
-      last_seen_date: t.last_seen_date,
+      last_seen_date: lastSeen,
       entry_price: t.entry_price,
       entry_currency: t.entry_currency,
       initial_social_score: t.initial_social_score,
-      last_social_score: t.last_social_score,
-      reinforce_count: t.reinforce_count,
-      sentiment_trend: t.sentiment_trend,
+      last_social_score: social,
+      reinforce_count: reinforce,
+      sentiment_trend: trend,
       expires_date: t.expires_date,
       technical_score: technical,
       fundamental_score: fundamental,
