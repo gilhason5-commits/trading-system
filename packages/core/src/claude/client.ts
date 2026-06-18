@@ -94,9 +94,15 @@ export class LiveClaude implements ClaudeClient {
       params.output_config = { effort: opts.effort };
     }
 
-    const res = (await this.sdk.messages.create(
-      params as unknown as Anthropic.MessageCreateParamsNonStreaming,
-    )) as Anthropic.Message;
+    // The SDK requires streaming for large max_tokens (it may exceed the 10-min
+    // non-streaming budget) — used for the big digest call; small calls stay direct.
+    const res = (
+      (opts.maxTokens ?? 2048) > 8000
+        ? await this.sdk.messages
+            .stream(params as unknown as Anthropic.MessageCreateParamsStreaming)
+            .finalMessage()
+        : await this.sdk.messages.create(params as unknown as Anthropic.MessageCreateParamsNonStreaming)
+    ) as Anthropic.Message;
 
     if ((res.stop_reason as string) === "refusal") {
       throw new Error(`Claude refused request (model ${model})`);
