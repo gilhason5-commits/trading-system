@@ -5,9 +5,14 @@ name: automations
 # UTC-equivalents; the once-a-day DB guards make sure it only really runs once.
 on:
   schedule:
-    - cron: "30 11 * * *" # scrape — 14:30 Israel (IDT / summer)
-    - cron: "30 12 * * *" # scrape — 14:30 Israel (IST / winter)
+    # Multiple times per job because GitHub cron is best-effort (often delayed /
+    # dropped). The once-a-day DB guards dedupe, so extra firings are harmless.
+    - cron: "30 11 * * *" # scrape — 14:30 Israel (IDT)
+    - cron: "45 11 * * *" # scrape backup
+    - cron: "15 12 * * *" # scrape backup
+    - cron: "30 12 * * *" # scrape — 14:30 Israel (IST)
     - cron: "0 20 * * *" # digest — 23:00 Israel (IDT)
+    - cron: "30 20 * * *" # digest backup
     - cron: "0 21 * * *" # digest — 23:00 Israel (IST)
     - cron: "*/30 13-21 * * 1-5" # price refresh — US market hours, weekdays
   workflow_dispatch:
@@ -33,7 +38,7 @@ env:
 
 jobs:
   scrape:
-    if: github.event.schedule == '30 11 * * *' || github.event.schedule == '30 12 * * *' || github.event.inputs.job == 'scrape'
+    if: github.event.schedule == '30 11 * * *' || github.event.schedule == '45 11 * * *' || github.event.schedule == '15 12 * * *' || github.event.schedule == '30 12 * * *' || github.event.inputs.job == 'scrape'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -46,7 +51,7 @@ jobs:
       - run: npm run scrape --workspace @trading/worker
 
   digest:
-    if: github.event.schedule == '0 20 * * *' || github.event.schedule == '0 21 * * *' || github.event.inputs.job == 'digest'
+    if: github.event.schedule == '0 20 * * *' || github.event.schedule == '30 20 * * *' || github.event.schedule == '0 21 * * *' || github.event.inputs.job == 'digest'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
