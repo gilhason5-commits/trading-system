@@ -110,7 +110,7 @@ export default async function LeadsPage() {
   // Tracking: enrich each tracked ticker with price/performance + clickable analysis.
   const trackingRows: TrackedRow[] = tracked
     .slice()
-    .sort((a, b) => b.last_seen_date.localeCompare(a.last_seen_date))
+    .sort((a, b) => (b.conviction ?? -1) - (a.conviction ?? -1)) // best buy-conviction first
     .map((t) => {
       const cur = priceByTicker.get(t.ticker.toUpperCase());
       const ret = t.entry_price && cur ? ((cur.price - t.entry_price) / t.entry_price) * 100 : null;
@@ -158,6 +158,7 @@ export default async function LeadsPage() {
         current: cur?.price ?? null,
         ret,
         conviction: t.conviction ?? null,
+        convictionDelta: t.conviction_delta ?? null,
         technical: t.technical_score ?? null,
         fundamental: t.fundamental_score ?? null,
         social: t.social_score ?? null,

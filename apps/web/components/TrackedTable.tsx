@@ -14,6 +14,8 @@ export interface TrackedRow {
   ret: number | null;
   /** Blended buy-conviction 0–100 (≥80 strong buy, ≤20 strong sell), + breakdown. */
   conviction: number | null;
+  /** Change in conviction vs the previous run (points). */
+  convictionDelta: number | null;
   technical: number | null;
   fundamental: number | null;
   social: number | null;
@@ -47,9 +49,17 @@ function Conviction({ row }: { row: TrackedRow }) {
   else if (c <= 20) { cls = "neg"; label = `מכירה חזקה ${100 - c}%`; }
   else if (c <= 40) { cls = "neg"; label = `מכירה ${100 - c}%`; }
   else label = `נייטרלי ${c}%`;
+  const d = row.convictionDelta;
+  const delta =
+    d != null && Math.round(d) !== 0 ? (
+      <span className={Math.round(d) > 0 ? "pos" : "neg"}>
+        {" "}({d > 0 ? "+" : ""}{Math.round(d)}%)
+      </span>
+    ) : null;
   return (
     <div className="whitespace-nowrap">
       <span className={`font-semibold ${cls}`}>{label}</span>
+      {delta}
       <div className="text-[10px] text-[var(--muted)]">
         ט {row.technical ?? "—"} · פ {row.fundamental ?? "—"} · ח {row.social ?? "—"}
       </div>

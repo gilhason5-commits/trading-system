@@ -99,6 +99,7 @@ export async function runTrackingStage(ctx: RunContext): Promise<void> {
     const bb = bullBear.get(key) ?? { bull: 0, bear: 0 };
     const social = socialScore(bb.bull, bb.bear);
     const conviction = blendConviction(technical, fundamental, social);
+    const convictionDelta = t.conviction != null ? conviction - t.conviction : 0;
 
     // Reinforce on a fresh mention today (not for names first added today).
     let reinforce = t.reinforce_count;
@@ -126,6 +127,7 @@ export async function runTrackingStage(ctx: RunContext): Promise<void> {
       fundamental_score: fundamental,
       social_score: social,
       conviction,
+      conviction_delta: convictionDelta,
     });
   }
 }

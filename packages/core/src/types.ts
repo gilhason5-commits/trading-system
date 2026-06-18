@@ -76,6 +76,8 @@ export interface TrackedRecommendation {
   fundamental_score?: number | null;
   social_score?: number | null;
   conviction?: number | null;
+  /** Change in conviction vs the previous run (points; + improved, − worsened). */
+  conviction_delta?: number | null;
   created_at: string;
 }
 
