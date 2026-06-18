@@ -103,7 +103,7 @@ export async function runDigestStage(ctx: RunContext): Promise<DailyDigest> {
     system: prompt.system,
     user: prompt.user,
     effort: "high",
-    maxTokens: 16000, // rich HTML digest can be long; avoid mid-string truncation
+    maxTokens: 32000, // rich HTML digest (insights + news + analysts) — avoid mid-tag truncation
   });
   ctx.cost.addClaude(res.usage, res.model);
 
