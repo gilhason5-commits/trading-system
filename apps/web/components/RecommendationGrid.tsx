@@ -1,7 +1,13 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { TradingViewChart } from "@/components/TradingViewChart";
+
+/** Dismiss a ticker (remove its rec + lead + tracking) so it can re-enter fresh. */
+export async function dismissTicker(ticker: string): Promise<void> {
+  await fetch(`/api/recommendation?ticker=${encodeURIComponent(ticker)}`, { method: "DELETE" });
+}
 
 export interface TrailItem {
   type: string;
@@ -121,7 +127,16 @@ export function RecDetailModal({ card, onClose }: { card: RecCard; onClose: () =
 }
 
 export function RecommendationGrid({ cards }: { cards: RecCard[] }) {
+  const router = useRouter();
   const [open, setOpen] = useState<RecCard | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  async function dismiss(ticker: string) {
+    setBusy(ticker);
+    await dismissTicker(ticker);
+    setBusy(null);
+    router.refresh();
+  }
 
   if (cards.length === 0) {
     return <p className="text-sm text-[var(--muted)]">אין המלצות מאומתות עדיין.</p>;
@@ -131,11 +146,19 @@ export function RecommendationGrid({ cards }: { cards: RecCard[] }) {
     <>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {cards.map((rec, idx) => (
-          <button
+          <div
             key={rec.id}
             onClick={() => setOpen(rec)}
-            className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4 text-right transition-colors hover:border-[var(--pos)]"
+            className="relative cursor-pointer rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4 text-right transition-colors hover:border-[var(--pos)]"
           >
+            <button
+              onClick={(e) => { e.stopPropagation(); dismiss(rec.ticker); }}
+              disabled={busy === rec.ticker}
+              title="הסר מהמערכת"
+              className="absolute left-2 top-2 rounded px-1.5 text-sm text-[var(--muted)] hover:text-[var(--neg)] disabled:opacity-50"
+            >
+              {busy === rec.ticker ? "…" : "✕"}
+            </button>
             <div className="mb-3 flex items-center gap-2">
               <span className="text-sm text-[var(--muted)]">#{idx + 1}</span>
               <span className="text-lg font-bold">{rec.ticker}</span>
@@ -154,7 +177,7 @@ export function RecommendationGrid({ cards }: { cards: RecCard[] }) {
             </div>
             <p className="mt-3 line-clamp-2 text-xs text-[var(--muted)]">{rec.rationale}</p>
             <p className="mt-2 text-xs text-[var(--pos)]">לחץ לפרטים ←</p>
-          </button>
+          </div>
         ))}
       </div>
 

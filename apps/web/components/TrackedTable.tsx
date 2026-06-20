@@ -1,7 +1,8 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { RecDetailModal, type RecCard } from "@/components/RecommendationGrid";
+import { RecDetailModal, dismissTicker, type RecCard } from "@/components/RecommendationGrid";
 import { Pct } from "@/components/format";
 
 export interface TrackedRow {
@@ -91,13 +92,22 @@ function Conviction({ row }: { row: TrackedRow }) {
 }
 
 export function TrackedTable({ rows }: { rows: TrackedRow[] }) {
+  const router = useRouter();
   const [open, setOpen] = useState<RecCard | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  async function dismiss(ticker: string) {
+    setBusy(ticker);
+    await dismissTicker(ticker);
+    setBusy(null);
+    router.refresh();
+  }
 
   if (rows.length === 0) {
     return <p className="text-sm text-[var(--muted)]">אין עדיין מניות במעקב.</p>;
   }
 
-  const headers = ["מניה", "יום", "מחיר כניסה", "נוכחי", "תשואה", "Conviction (ט/פ/ח)", "אזכור חיובי אחרון", "אזכור שלילי אחרון", "חיזוקים"];
+  const headers = ["מניה", "יום", "מחיר כניסה", "נוכחי", "תשואה", "Conviction (ט/פ/ח)", "אזכור חיובי אחרון", "אזכור שלילי אחרון", "חיזוקים", ""];
 
   return (
     <>
@@ -135,6 +145,16 @@ export function TrackedTable({ rows }: { rows: TrackedRow[] }) {
                   ) : (
                     <span className="text-[var(--muted)]">—</span>
                   )}
+                </td>
+                <td className="px-3 py-2">
+                  <button
+                    onClick={() => dismiss(r.ticker)}
+                    disabled={busy === r.ticker}
+                    title="הסר מהמערכת"
+                    className="rounded px-1.5 text-xs text-[var(--muted)] hover:text-[var(--neg)] disabled:opacity-50"
+                  >
+                    {busy === r.ticker ? "…" : "✕"}
+                  </button>
                 </td>
               </tr>
             ))}

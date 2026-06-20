@@ -71,6 +71,9 @@ export interface Repository {
   listTracked(): Promise<TrackedRecommendation[]>;
   upsertTracked(t: Omit<TrackedRecommendation, "id" | "created_at">): Promise<void>;
   deleteTracked(id: string): Promise<void>;
+  /** Dismiss a ticker: remove its recommendations, lead and tracking so it can
+   *  re-enter fresh if it's recommended again. */
+  dismissTicker(ticker: string): Promise<void>;
 
   // digests + runs + alerts + settings
   listDigests(): Promise<DailyDigest[]>;

@@ -388,6 +388,13 @@ export class SupabaseRepository implements Repository {
     if (error) this.fail(error);
   }
 
+  async dismissTicker(ticker: string): Promise<void> {
+    for (const table of ["recommendations", "leads", "tracked_recommendations"]) {
+      const { error } = await this.db.from(table).delete().ilike("ticker", ticker);
+      if (error) this.fail(error);
+    }
+  }
+
   // -------------------------------------------------------------------------
   // digests + runs + alerts + settings
   // -------------------------------------------------------------------------

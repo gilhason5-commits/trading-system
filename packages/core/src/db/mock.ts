@@ -214,6 +214,12 @@ export class MockRepository implements Repository {
   async deleteTracked(id: string) {
     this.tracked = this.tracked.filter((x) => x.id !== id);
   }
+  async dismissTicker(ticker: string) {
+    const t = ticker.toUpperCase();
+    this.recommendations = this.recommendations.filter((r) => r.ticker.toUpperCase() !== t);
+    this.leads = this.leads.filter((l) => l.ticker.toUpperCase() !== t);
+    this.tracked = this.tracked.filter((x) => x.ticker.toUpperCase() !== t);
+  }
 
   async listDigests() {
     return [...this.digests].sort((a, b) => b.date.localeCompare(a.date));
