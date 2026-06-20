@@ -42,6 +42,30 @@ interface YahooQuoteRow {
 }
 
 /**
+ * Current US equity market state from a liquid reference (SPY): "REGULAR",
+ * "PRE", "POST", "PREPRE", "POSTPOST", or "CLOSED". Returns null on failure.
+ */
+export async function getUsMarketState(): Promise<string | null> {
+  try {
+    const { cookie, crumb } = await getCrumb();
+    const res = await fetch(
+      `https://query1.finance.yahoo.com/v7/finance/quote?symbols=SPY&crumb=${encodeURIComponent(crumb)}`,
+      { headers: { "User-Agent": YAHOO_UA, cookie } },
+    );
+    if (!res.ok) return null;
+    const j = (await res.json()) as { quoteResponse?: { result?: YahooQuoteRow[] } };
+    return j.quoteResponse?.result?.[0]?.marketState ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** True only during the US regular trading session (not pre/post/closed). */
+export async function isUsMarketOpen(): Promise<boolean> {
+  return (await getUsMarketState()) === "REGULAR";
+}
+
+/**
  * Extended-hours-aware quote: in pre-market it returns the pre-market price, in
  * post-market / after close the post-market price, otherwise the regular price.
  * `percent_change` and `previous_close` are always vs the regular previous close,

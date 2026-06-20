@@ -21,6 +21,7 @@ create table if not exists paper_trades (
   value_usd   numeric     not null,
   conviction  numeric,
   reason      text        not null default '',
+  analysis    text,
   created_at  timestamptz not null default now()
 );
 

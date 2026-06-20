@@ -69,6 +69,50 @@ export interface PaperAccount {
 
 export type PaperAction = "buy" | "sell";
 
+/** A source quote that fed a trade decision (from the social/RSS scan). */
+export interface TradeQuote {
+  platform: string;
+  handle: string;
+  claim: string;
+  url: string;
+}
+
+/**
+ * The full due-diligence snapshot captured at trade time, so /paper can show the
+ * complete thinking + verification visually (chart by ticker, score table,
+ * analyst targets, market backdrop, and the source quotes that drove it).
+ */
+export interface TradeDossier {
+  market: { regime: string; summary: string };
+  scores: {
+    technical: number | null;
+    fundamental: number | null;
+    social: number | null;
+    conviction: number | null;
+    delta: number | null;
+    reinforce: number;
+  };
+  analyst: {
+    target_mean: number | null;
+    target_low: number | null;
+    target_high: number | null;
+    upside_pct: number | null;
+    recommendation: string | null;
+    big_banks: string[];
+  } | null;
+  quotes: TradeQuote[];
+  /** The exit plan set at entry (buys): stop-loss + take-profit levels + rule. */
+  plan?: {
+    stop_price: number;
+    stop_pct: number;
+    target_price: number;
+    target_pct: number;
+    exit_rule: string;
+  };
+  /** Return % at exit (sells only). */
+  ret_pct?: number;
+}
+
 /** A single autonomous paper trade, logged with the reason it was taken. */
 export interface PaperTrade {
   id: string;
@@ -86,6 +130,8 @@ export interface PaperTrade {
   conviction: number | null;
   /** Hebrew explanation of why the engine made this trade. */
   reason: string;
+  /** JSON-encoded TradeDossier — the full visual due-diligence at trade time. */
+  analysis: string | null;
   created_at: string;
 }
 

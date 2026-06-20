@@ -1,5 +1,17 @@
+import { fetchAnalystData } from "../datasources/analysts.ts";
+import { assessMarketContext, type MarketContext } from "../datasources/marketcontext.ts";
+import { isUsMarketOpen } from "../datasources/yahoo.ts";
 import { MIN_CONVICTION } from "../scoring.ts";
-import type { Currency, Market, PaperAccount, PaperPosition, TrackedRecommendation } from "../types.ts";
+import type {
+  Currency,
+  Market,
+  PaperAccount,
+  Post,
+  Source,
+  TradeDossier,
+  TradeQuote,
+  TrackedRecommendation,
+} from "../types.ts";
 import type { RunContext } from "./context.ts";
 
 // Autonomous paper-trading engine. Once a day it manages the isolated paper book
@@ -8,12 +20,16 @@ import type { RunContext } from "./context.ts";
 // when a name leaves the active recommendations. Every action is logged to
 // paper_trades with the reason, so the /paper decision log explains each trade.
 
-// ── Strategy: "aggressive" ──────────────────────────────────────────────────
+// ── Strategy: "aggressive", but disciplined ─────────────────────────────────
 const STARTING_CASH = 10_000; // USD
 const STRATEGY = {
-  buyConviction: 65, // enter at ≥65 (earlier than a conservative ≥75)
-  maxPositions: 12, // more names, higher turnover
-  targetWeightPct: 0.15, // size each new buy at ~15% of total account value
+  buyConviction: 65, // blended buy-conviction floor
+  componentFloor: 60, // every leg (technical/fundamental/social) must clear this —
+  //                      only buy when the thesis holds up from ALL angles
+  maxPositions: 12,
+  maxNewBuysPerDay: 3, // scale in gradually — never deploy the whole book at once
+  minCashReservePct: 0.25, // always keep ≥25% in cash
+  targetWeightPct: 0.12, // size each new buy at ~12% of total account value
   stopLossPct: -15, // exit a loser at −15%
   takeProfitPct: 40, // realise a winner at +40%
 };
@@ -44,6 +60,15 @@ export async function runAutoTradeStage(ctx: RunContext): Promise<void> {
   const trades = await ctx.repo.listPaperTrades();
   if (trades.some((t) => t.date === ctx.date)) return;
 
+  // Only trade during the US regular session — never when the market is closed
+  // or in pre/post (the book is a daytime medium-term trader).
+  if (!(await isUsMarketOpen())) return;
+
+  // Research the market backdrop before deploying capital. In a clearly risk-off
+  // tape we still manage exits but hold off on new buys.
+  const mkt = await assessMarketContext();
+  const marketTag = mkt.summary ? `מצב שוק (${regimeHe(mkt.regime)}): ${mkt.summary} · ` : "";
+
   const account = await ensureAccount(ctx);
   let cash = account.cash;
 
@@ -56,6 +81,64 @@ export async function runAutoTradeStage(ctx: RunContext): Promise<void> {
     (await ctx.repo.listLeads()).map((l) => [l.ticker.toUpperCase(), l.market]),
   );
   const priceCache = new Map((await ctx.repo.listCachedQuotes()).map((c) => [c.ticker.toUpperCase(), c]));
+
+  // Preload the social/RSS scan so each trade can attach the source quotes that
+  // drove it (the "data found on the web / networks").
+  const posts = new Map<string, Post>((await ctx.repo.listPosts()).map((p) => [p.id, p]));
+  const sources = new Map<string, Source>((await ctx.repo.listSources()).map((s) => [s.id, s]));
+  const signals = await ctx.repo.listSignals();
+  function quotesFor(ticker: string): TradeQuote[] {
+    const out: TradeQuote[] = [];
+    for (const s of signals) {
+      if (s.ticker.toUpperCase() !== ticker.toUpperCase()) continue;
+      const post = posts.get(s.post_id);
+      const src = post ? sources.get(post.source_id) : undefined;
+      out.push({
+        platform: src?.platform ?? "מקור",
+        handle: src?.handle ?? "—",
+        claim: s.claim,
+        url: post?.url ?? "",
+      });
+    }
+    return out.slice(0, 8);
+  }
+
+  async function dossier(
+    tr: TrackedRecommendation | undefined,
+    ticker: string,
+    extra?: { ret_pct?: number; plan?: TradeDossier["plan"] },
+  ): Promise<string> {
+    let analyst: TradeDossier["analyst"] = null;
+    try {
+      const a = await fetchAnalystData(ticker);
+      analyst = {
+        target_mean: a.target_mean,
+        target_low: a.target_low,
+        target_high: a.target_high,
+        upside_pct: a.upside_pct,
+        recommendation: a.recommendation,
+        big_banks: a.big_bank_ratings.map((r) => `${r.firm}: ${r.grade} (${r.date})`),
+      };
+    } catch {
+      // analyst data unavailable — leave null
+    }
+    const d: TradeDossier = {
+      market: { regime: mkt.regime, summary: mkt.summary },
+      scores: {
+        technical: tr?.technical_score ?? null,
+        fundamental: tr?.fundamental_score ?? null,
+        social: tr?.social_score ?? null,
+        conviction: tr?.conviction ?? null,
+        delta: tr?.conviction_delta ?? null,
+        reinforce: tr?.reinforce_count ?? 0,
+      },
+      analyst,
+      quotes: quotesFor(ticker),
+      ...(extra?.plan ? { plan: extra.plan } : {}),
+      ...(extra?.ret_pct != null ? { ret_pct: extra.ret_pct } : {}),
+    };
+    return JSON.stringify(d);
+  }
 
   // Live execution price (extended-hours aware); fall back to the cache.
   async function execPrice(ticker: string, market: Market): Promise<{ price: number; currency: Currency } | null> {
@@ -104,42 +187,70 @@ export async function runAutoTradeStage(ctx: RunContext): Promise<void> {
       currency: ep.currency,
       value_usd: round2(proceedsUsd),
       conviction,
-      reason,
+      reason: marketTag + reason,
+      analysis: await dossier(tr, p.ticker, { ret_pct: retPct }),
     });
   }
 
   // ── 2) ENTRIES — deploy cash into the best tracked names not yet held ─────
+  // In a risk-off backdrop the research step holds new buys; exits above still run.
+  if (!mkt.tradeable) {
+    await ctx.repo.savePaperAccount({ starting_cash: account.starting_cash, cash: round2(cash), currency: "USD" });
+    return;
+  }
+
   positions = await ctx.repo.listPaperPositions();
   const heldNow = new Set(positions.map((p) => p.ticker.toUpperCase()));
   let slots = STRATEGY.maxPositions - heldNow.size;
+  // Scale in gradually — don't deploy the whole book at once, and keep a cash buffer.
+  let buysLeft = STRATEGY.maxNewBuysPerDay;
 
+  // Only buy names that are convincing from EVERY angle: blended conviction high
+  // AND no weak leg (technical, fundamental and social all clear the floor).
+  const f = STRATEGY.componentFloor;
   const candidates = tracked
-    .filter((t) => t.conviction != null && t.conviction >= STRATEGY.buyConviction)
+    .filter((t) => (t.conviction ?? 0) >= STRATEGY.buyConviction)
+    .filter((t) => (t.technical_score ?? 0) >= f && (t.fundamental_score ?? 0) >= f && (t.social_score ?? 0) >= f)
     .filter((t) => !heldNow.has(t.ticker.toUpperCase()))
     .sort((a, b) => (b.conviction ?? 0) - (a.conviction ?? 0) || (b.conviction_delta ?? 0) - (a.conviction_delta ?? 0));
 
   for (const t of candidates) {
-    if (slots <= 0) break;
+    if (slots <= 0 || buysLeft <= 0) break;
     const key = t.ticker.toUpperCase();
     const market = marketByTicker.get(key) ?? "US";
     const ep = await execPrice(t.ticker, market);
     if (!ep) continue;
 
-    // Total account value drives position sizing.
+    // Total account value drives sizing; keep a cash reserve (don't deploy it all).
     const holdingsUsd = (await ctx.repo.listPaperPositions()).reduce((s, p) => {
       const c = priceCache.get(p.ticker.toUpperCase());
       const px = c?.price ?? p.avg_cost;
       return s + toUsd(px, (c?.currency ?? p.currency) as Currency, usdIls) * p.qty;
     }, 0);
     const accountValue = cash + holdingsUsd;
-    const targetUsd = Math.min(cash, accountValue * STRATEGY.targetWeightPct);
+    const deployable = cash - accountValue * STRATEGY.minCashReservePct; // keep the reserve untouched
+    const targetUsd = Math.min(deployable, accountValue * STRATEGY.targetWeightPct);
+    if (targetUsd <= 0) break; // reserve reached — stop buying
     const priceUsd = toUsd(ep.price, ep.currency, usdIls);
     const qty = sizeQty(targetUsd, priceUsd);
-    if (qty < 1) continue; // not enough cash for a meaningful position
+    if (qty < 1) continue; // a single share would breach the reserve / sizing
 
     const costUsd = priceUsd * qty;
     cash -= costUsd;
     slots -= 1;
+    buysLeft -= 1;
+
+    // The exit plan, fixed at entry: stop-loss and take-profit levels.
+    const stopPrice = round2(ep.price * (1 + STRATEGY.stopLossPct / 100));
+    const targetPrice = round2(ep.price * (1 + STRATEGY.takeProfitPct / 100));
+    const plan = {
+      stop_price: stopPrice,
+      stop_pct: STRATEGY.stopLossPct,
+      target_price: targetPrice,
+      target_pct: STRATEGY.takeProfitPct,
+      exit_rule: `סטופ-לוס ${stopPrice} ${ep.currency} (${STRATEGY.stopLossPct}%) · יעד ${targetPrice} ${ep.currency} (+${STRATEGY.takeProfitPct}%) · יציאה גם אם הקונביקשן יורד מתחת ל-${MIN_CONVICTION}% או יוצא מההמלצות`,
+    };
+
     await ctx.repo.addPaperPosition({
       ticker: t.ticker,
       market,
@@ -157,10 +268,13 @@ export async function runAutoTradeStage(ctx: RunContext): Promise<void> {
       value_usd: round2(costUsd),
       conviction: t.conviction ?? null,
       reason:
-        `קנייה: קונביקשן ${t.conviction}%` +
+        marketTag +
+        `קנייה: קונביקשן ${t.conviction}% (כל הרכיבים מעל ${f})` +
         (t.conviction_delta ? ` (${t.conviction_delta > 0 ? "+" : ""}${Math.round(t.conviction_delta)}% מהריצה הקודמת)` : "") +
         ` · ט ${t.technical_score ?? "—"}/פ ${t.fundamental_score ?? "—"}/ח ${t.social_score ?? "—"}` +
-        (t.reinforce_count ? ` · חוזק ×${t.reinforce_count}` : ""),
+        (t.reinforce_count ? ` · חוזק ×${t.reinforce_count}` : "") +
+        ` · ${plan.exit_rule}`,
+      analysis: await dossier(t, t.ticker, { plan }),
     });
   }
 
@@ -174,4 +288,8 @@ export async function runAutoTradeStage(ctx: RunContext): Promise<void> {
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+function regimeHe(regime: "risk_on" | "neutral" | "risk_off"): string {
+  return regime === "risk_on" ? "סיכון-און" : regime === "risk_off" ? "סיכון-אוף" : "ניטרלי";
 }

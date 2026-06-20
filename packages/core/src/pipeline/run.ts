@@ -72,9 +72,6 @@ export async function runDailyPipeline(
     // Update the 7-day recommendation tracker from today's recommendations.
     await runTrackingStage(ctx);
 
-    // Autonomous paper-trading: act on the freshly-computed convictions.
-    await runAutoTradeStage(ctx);
-
     const digest = skipDigest ? null : await runDigestStage(ctx);
 
     const cost = ctx.cost.summary();
@@ -180,16 +177,26 @@ export async function pollPrices(ctx: RunContext = createRunContext()): Promise<
     });
   }
 
+  // Autonomous paper-trading runs here (not in the 14:30 pipeline) so it only
+  // acts during the US regular session — the stage itself no-ops when the market
+  // is closed or it already traded today.
+  try {
+    await runAutoTradeStage(ctx);
+  } catch (err) {
+    await ctx.repo.addAlert({ kind: "error", message: `מסחר אוטונומי נכשל: ${(err as Error).message}` });
+  }
+
   // Mirror the same once-a-day snapshot for the autonomous paper book so /paper
   // can chart its development over time. Total value = cash + holdings, and P&L is
   // vs the book's starting cash. Best-effort: don't break the poll on a missing
   // table. Snapshot whenever there's an account or holdings.
   try {
     const account = await ctx.repo.getPaperAccount();
-    if (account || paper.length) {
+    const paperNow = await ctx.repo.listPaperPositions(); // post-trade holdings
+    if (account || paperNow.length) {
       const cash = account?.cash ?? 0;
       const startCash = account?.starting_cash ?? cash;
-      const paperViews = enrichPositions(paper, quotes, usdIls);
+      const paperViews = enrichPositions(paperNow, quotes, usdIls);
       const holdingsUsd = paperViews.reduce((s, v) => s + v.market_value.usd, 0);
       const holdingsIls = paperViews.reduce((s, v) => s + v.market_value.ils, 0);
       const totalUsd2 = cash + holdingsUsd;
