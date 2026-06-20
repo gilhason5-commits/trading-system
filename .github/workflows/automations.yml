@@ -31,6 +31,7 @@ env:
   TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
   FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
   ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
   APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
   IG_SESSION: ${{ secrets.IG_SESSION }}
   X_AUTH_TOKEN: ${{ secrets.X_AUTH_TOKEN }}
