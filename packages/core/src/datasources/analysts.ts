@@ -3,7 +3,7 @@
 // investment banks. Per-firm *price targets* aren't available on any free tier —
 // Yahoo gives the consensus target plus per-firm rating grades.
 
-const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36";
+import { getCrumb, YAHOO_UA as UA } from "./yahoo.ts";
 
 // The big investment houses we surface (matched as case-insensitive substrings).
 const BIG_BANKS = [
@@ -38,22 +38,6 @@ export interface AnalystData {
   upside_pct: number | null;
   recommendation: string | null;
   big_bank_ratings: AnalystFirmRating[];
-}
-
-let crumbCache: { cookie: string; crumb: string } | null = null;
-
-async function getCrumb(): Promise<{ cookie: string; crumb: string }> {
-  if (crumbCache) return crumbCache;
-  const r1 = await fetch("https://fc.yahoo.com/", { headers: { "User-Agent": UA } });
-  const setCookies = r1.headers.getSetCookie?.() ?? [];
-  const cookie = setCookies.map((c) => c.split(";")[0]).join("; ");
-  const r2 = await fetch("https://query2.finance.yahoo.com/v1/test/getcrumb", {
-    headers: { "User-Agent": UA, cookie },
-  });
-  const crumb = (await r2.text()).trim();
-  if (!crumb || crumb.includes("<")) throw new Error("yahoo: could not obtain crumb");
-  crumbCache = { cookie, crumb };
-  return crumbCache;
 }
 
 function num(x: unknown): number | null {

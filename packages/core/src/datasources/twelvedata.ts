@@ -1,6 +1,7 @@
 import { getEnv, isLive } from "../env.ts";
 import type { Currency, Market } from "../types.ts";
 import { fetchHistoricalTechnicals } from "./technicals.ts";
+import { fetchYahooQuote } from "./yahoo.ts";
 
 // Twelve Data — prices, FX, technicals for all three markets (spec §3.2).
 // Step 2 needs quotes + FX; technicals (for Module 2) land with Step 3's full
@@ -174,8 +175,15 @@ export class HybridMarketData implements MarketDataSource {
   }
 
   async getQuote(symbol: string, market: Market): Promise<Quote> {
-    // Finnhub covers US equities; TASE/crypto fall back to Twelve Data.
+    // US equities: Yahoo first — it's the only free source that prices the
+    // pre-market / post-market sessions (marketState-aware). Finnhub (regular
+    // session only) is the fast fallback if Yahoo is unavailable.
     if (market === "US") {
+      try {
+        return await fetchYahooQuote(symbol, market);
+      } catch {
+        // fall through to Finnhub regular-session quote
+      }
       const res = await fetch(`${FINNHUB}/quote?symbol=${encodeURIComponent(symbol)}&token=${this.finnhubKey}`);
       if (res.ok) {
         const j = (await res.json()) as { c?: number; dp?: number; pc?: number };
