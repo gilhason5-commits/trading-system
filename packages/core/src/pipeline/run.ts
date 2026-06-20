@@ -171,6 +171,29 @@ export async function pollPrices(ctx: RunContext = createRunContext()): Promise<
       total_pl_usd: round(totalPl),
     });
   }
+
+  // Mirror the same once-a-day snapshot for the paper book so /paper can chart
+  // its development over time, exactly like the real portfolio. Best-effort: if
+  // the paper_snapshots table isn't there yet, don't break the price poll.
+  if (paper.length) {
+    try {
+      const paperViews = enrichPositions(paper, quotes, usdIls);
+      const paperUsd = paperViews.reduce((s, v) => s + v.market_value.usd, 0);
+      const paperIls = paperViews.reduce((s, v) => s + v.market_value.ils, 0);
+      const paperPl = paperViews.reduce((s, v) => s + v.unrealized_pl.usd, 0);
+      const paperSnaps = await ctx.repo.listPaperSnapshots();
+      if (paperSnaps.at(-1)?.date !== ctx.date) {
+        await ctx.repo.addPaperSnapshot({
+          date: ctx.date,
+          total_value_usd: round(paperUsd),
+          total_value_ils: round(paperIls),
+          total_pl_usd: round(paperPl),
+        });
+      }
+    } catch {
+      // paper-snapshot table missing or transient error — skip, real snapshot already saved
+    }
+  }
 }
 
 function round(n: number): number {

@@ -172,6 +172,30 @@ export class SupabaseRepository implements Repository {
     return data as PortfolioSnapshot;
   }
 
+  async listPaperSnapshots(): Promise<PortfolioSnapshot[]> {
+    const { data, error } = await this.db
+      .from("paper_snapshots")
+      .select("*")
+      .order("date", { ascending: true });
+    // Tolerate the table not existing yet (migration 0009 not applied) so the
+    // /paper page never 500s — just hide the chart until it's there.
+    if (error) {
+      if (/relation .* does not exist|could not find the table/i.test(error.message)) return [];
+      this.fail(error);
+    }
+    return (data ?? []) as PortfolioSnapshot[];
+  }
+
+  async addPaperSnapshot(s: Omit<PortfolioSnapshot, "id">): Promise<PortfolioSnapshot> {
+    const { data, error } = await this.db
+      .from("paper_snapshots")
+      .insert(s)
+      .select()
+      .single();
+    if (error) this.fail(error);
+    return data as PortfolioSnapshot;
+  }
+
   // -------------------------------------------------------------------------
   // analyses
   // -------------------------------------------------------------------------

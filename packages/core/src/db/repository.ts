@@ -43,6 +43,9 @@ export interface Repository {
   upsertCachedQuotes(quotes: Omit<CachedQuote, "updated_at">[]): Promise<void>;
   listSnapshots(): Promise<PortfolioSnapshot[]>;
   addSnapshot(s: Omit<PortfolioSnapshot, "id">): Promise<PortfolioSnapshot>;
+  /** Paper-portfolio value history (same shape as the real portfolio snapshots). */
+  listPaperSnapshots(): Promise<PortfolioSnapshot[]>;
+  addPaperSnapshot(s: Omit<PortfolioSnapshot, "id">): Promise<PortfolioSnapshot>;
 
   // analyses
   listAnalyses(date?: string): Promise<Analysis[]>;

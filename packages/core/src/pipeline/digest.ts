@@ -1,5 +1,6 @@
 import { digestPrompt } from "../claude/index.ts";
 import { fetchAnalystData } from "../datasources/analysts.ts";
+import { fetchGeneralMarketNews } from "../datasources/marketnews.ts";
 import type { DailyDigest } from "../types.ts";
 import type { RunContext } from "./context.ts";
 
@@ -58,6 +59,9 @@ async function buildAggregation(ctx: RunContext) {
     }),
   );
 
+  // Bottom-of-digest general market news (Israel + US), independent of holdings.
+  const generalMarketNews = await fetchGeneralMarketNews().catch(() => []);
+
   // Analyst forecasts (consensus target + big-bank ratings) per held position.
   const analysts = await Promise.all(
     positions.map(async (p) => {
@@ -88,6 +92,11 @@ async function buildAggregation(ctx: RunContext) {
         consensus: a!.recommendation,
         big_banks: a!.big_bank_ratings.map((r) => `${r.firm}: ${r.grade} (${r.date})`),
       })),
+    general_market_news: generalMarketNews.map((n) => ({
+      headline: n.headline,
+      source: n.source,
+      region: n.region,
+    })),
   };
 
   return { aggregation };

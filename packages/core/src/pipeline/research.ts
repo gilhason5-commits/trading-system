@@ -60,14 +60,22 @@ async function buildContext(ctx: RunContext, ticker: string, market: Market) {
   if (fundamentals) verifiedSources.push("פונדמנטלי (Finnhub)");
   if (news.length) verifiedSources.push("חדשות (Finnhub)");
 
-  return { analysisText, webContextText, verifiedSources };
+  return { analysisText, webContextText, verifiedSources, technicals };
 }
 
-async function researchOne(ctx: RunContext, lead: Lead): Promise<Recommendation> {
+async function researchOne(ctx: RunContext, lead: Lead): Promise<Recommendation | null> {
   await ctx.repo.setLeadStatus(lead.id, "researching");
 
   const mentionCount = Math.max(lead.mention_count, await independentSourceCount(ctx, lead.ticker));
-  const { analysisText, webContextText, verifiedSources } = await buildContext(ctx, lead.ticker, lead.market);
+  const { analysisText, webContextText, verifiedSources, technicals } = await buildContext(ctx, lead.ticker, lead.market);
+
+  // No technical data (price/chart) → almost always a bad ticker parse (e.g. a
+  // foreign listing or a false positive). Don't surface it as a recommendation;
+  // park the lead so it can re-enter if real data shows up later.
+  if (!technicals) {
+    await ctx.repo.setLeadStatus(lead.id, "new");
+    return null;
+  }
 
   const prompt = leadScoringPrompt(lead.ticker, mentionCount, analysisText, webContextText);
   const res = await ctx.claude.complete({
@@ -113,7 +121,8 @@ export async function runResearchStage(ctx: RunContext): Promise<Recommendation[
   const out: Recommendation[] = [];
   for (const lead of leads) {
     try {
-      out.push(await researchOne(ctx, lead));
+      const rec = await researchOne(ctx, lead);
+      if (rec) out.push(rec);
     } catch (err) {
       await ctx.repo.addAlert({
         kind: "error",

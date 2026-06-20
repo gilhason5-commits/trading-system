@@ -32,6 +32,7 @@ export class MockRepository implements Repository {
   private positions: Position[];
   private paperPositions: PaperPosition[] = [];
   private cachedQuotes: CachedQuote[] = [];
+  private paperSnapshots: PortfolioSnapshot[] = [];
   private tracked: TrackedRecommendation[] = [];
   private fx: FxRate;
   private snapshots: PortfolioSnapshot[];
@@ -117,6 +118,14 @@ export class MockRepository implements Repository {
   async addSnapshot(s: Omit<PortfolioSnapshot, "id">) {
     const full: PortfolioSnapshot = { ...s, id: nextId("snap") };
     this.snapshots.push(full);
+    return full;
+  }
+  async listPaperSnapshots() {
+    return [...this.paperSnapshots].sort((a, b) => a.date.localeCompare(b.date));
+  }
+  async addPaperSnapshot(s: Omit<PortfolioSnapshot, "id">) {
+    const full: PortfolioSnapshot = { ...s, id: nextId("psnap") };
+    this.paperSnapshots.push(full);
     return full;
   }
 

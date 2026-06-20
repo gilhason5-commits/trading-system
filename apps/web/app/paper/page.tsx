@@ -1,14 +1,16 @@
-import { formatDual, getRepository } from "@trading/core";
+import { formatDual, formatUsd, getRepository } from "@trading/core";
 import { PnL, Pct, formatPct, sinceLabel } from "@/components/format";
 import { PaperAddForm, PaperRemoveButton } from "@/components/PaperManager";
+import { Sparkline } from "@/components/Sparkline";
 import { getPaperPortfolio } from "@/lib/paperPortfolio";
 
 export const dynamic = "force-dynamic";
 
 export default async function PaperPage() {
-  const [{ views, stats, usdIls, lastUpdated }, recommendations] = await Promise.all([
+  const [{ views, stats, usdIls, lastUpdated }, recommendations, snapshots] = await Promise.all([
     getPaperPortfolio(),
     getRepository().listRecommendations(),
+    getRepository().listPaperSnapshots(),
   ]);
 
   // Quick-add candidates: best non-flagged recommendations, unique tickers.
@@ -55,6 +57,18 @@ export default async function PaperPage() {
               tone={stats.day_pl.usd}
             />
           </section>
+
+          {snapshots.length >= 2 && (
+            <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
+              <div className="mb-2 flex items-baseline justify-between">
+                <h2 className="text-lg font-semibold">ביצועים</h2>
+                <span className="text-sm text-[var(--muted)]">
+                  {formatUsd(snapshots.at(0)?.total_value_usd ?? 0)} → {formatUsd(snapshots.at(-1)?.total_value_usd ?? 0)}
+                </span>
+              </div>
+              <Sparkline snapshots={snapshots} />
+            </section>
+          )}
 
           <section>
             <h2 className="mb-3 text-lg font-semibold">פוזיציות דמה ({views.length})</h2>

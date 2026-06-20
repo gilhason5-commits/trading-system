@@ -114,18 +114,23 @@ export function digestPrompt(aggregationJson: string): Prompt {
       " You are also writing a daily summary email in Hebrew, right-to-left (RTL).",
     user: [
       "Write the daily portfolio digest email in Hebrew (RTL HTML).",
-      "This digest is ONLY about the user's portfolio. Do NOT include: a portfolio snapshot/value/P&L " +
-        "section (it's on the dashboard), social-network signals, or new stock leads/recommendations " +
-        "(those live on the leads page). Exactly three sections:",
+      "This digest is mainly about the user's portfolio, with one general-market section at the very end. " +
+        "Do NOT include: a portfolio snapshot/value/P&L section (it's on the dashboard), social-network " +
+        "signals, or new stock leads/recommendations (those live on the leads page). Exactly four sections:",
       "1) תובנות היום — לכל מניה בתיק (analyses) המלצה ברורה ובולטת: **למכור/לצמצם** (stance=trim), " +
         "**לחזק/להוסיף** (stance=add), או **להמשיך להחזיק** (stance=hold) — עם נימוק קצר משילוב טכני+פונדמנטלי, " +
         "אירועים מרכזיים (key_events) וסיכונים (risk_flags).",
-      "2) חדשות ואירועים — הרחב כאן: חדשות מאקרו/שוק כלליות (market_news) ואירועים גדולים, " +
-        "וחדשות מיקרו ספציפיות לכל מניה בתיק (portfolio_news). הסבר בקצרה את הרלוונטיות לתיק.",
+      "2) חדשות ואירועים הנוגעים לתיק — חדשות מיקרו ספציפיות לכל מניה בתיק (portfolio_news) " +
+        "וחדשות מאקרו/שוק (market_news) שרלוונטיות ישירות להחזקות. הסבר בקצרה את ההשפעה על התיק. " +
+        "(חדשות שוק כלליות שאינן קשורות לתיק שמורות לסקשן 4 — אל תכפיל אותן כאן.)",
       "3) תחזיות אנליסטים לפוזיציות בתיק (analyst_forecasts): לכל מניה — יעד מחיר קונצנזוס (target_mean) " +
         "וטווח יעדים (target_low עד target_high), פוטנציאל עלייה (upside_pct), הקונצנזוס, ודירוגי בתי " +
         "ההשקעות הגדולים (big_banks). אם big_banks ריק, ציין שאין דירוג עדכני מבתי ההשקעות הגדולים.",
-      "End the document immediately after section 3 — do NOT add any footer, disclaimer, " +
+      "4) חדשות מהשוק (general_market_news) — סקשן בתחתית הדייג'סט עם חדשות שוק ההון כלליות שאינן " +
+        "קשורות בהכרח לתיק: אירועים גדולים, מהלכי סקטורים ומאקרו, עם התמקדות בישראל (ת\"א-35, בנק ישראל, " +
+        "השקל) ובארה\"ב (הפד, S&P 500, נאסד\"ק). סדר את הפריטים לפי אזור (ישראל / ארה\"ב / גלובלי) וציין את " +
+        "המקור לכל ידיעה. אם general_market_news ריק, דלג על הסקשן הזה לגמרי.",
+      "End the document immediately after section 4 — do NOT add any footer, disclaimer, " +
         "'research only' note, or any further section.",
       "Styling: dark theme, HIGH CONTRAST. Body text must be bright and readable — " +
         "use #e8edf4 for body, #ffffff for headings/values, #cbd5e1 for small labels. " +
