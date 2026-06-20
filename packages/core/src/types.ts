@@ -53,6 +53,42 @@ export interface PaperPosition extends Position {
   created_at: string;
 }
 
+/**
+ * Cash side of the autonomous paper-trading book. One row. The engine buys with
+ * `cash` and sells back into it; total account value = cash + holdings value.
+ */
+export interface PaperAccount {
+  id: string;
+  /** Initial cash the book started with (USD). */
+  starting_cash: number;
+  /** Cash currently available to deploy (USD). */
+  cash: number;
+  currency: "USD";
+  updated_at: string;
+}
+
+export type PaperAction = "buy" | "sell";
+
+/** A single autonomous paper trade, logged with the reason it was taken. */
+export interface PaperTrade {
+  id: string;
+  /** YYYY-MM-DD the trade was executed. */
+  date: string;
+  ticker: string;
+  action: PaperAction;
+  qty: number;
+  /** Execution price in the instrument's native currency. */
+  price: number;
+  currency: Currency;
+  /** Cash impact in USD (always positive; sign implied by `action`). */
+  value_usd: number;
+  /** Blended buy-conviction at the time of the trade (0–100), if known. */
+  conviction: number | null;
+  /** Hebrew explanation of why the engine made this trade. */
+  reason: string;
+  created_at: string;
+}
+
 /** A recommended ticker followed for 7 days after it's first recommended. */
 export interface TrackedRecommendation {
   id: string;

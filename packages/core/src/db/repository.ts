@@ -5,7 +5,9 @@ import type {
   DailyDigest,
   FxRate,
   Lead,
+  PaperAccount,
   PaperPosition,
+  PaperTrade,
   PortfolioSnapshot,
   Position,
   Post,
@@ -34,6 +36,11 @@ export interface Repository {
   listPaperPositions(): Promise<PaperPosition[]>;
   addPaperPosition(p: Omit<PaperPosition, "id" | "created_at">): Promise<PaperPosition>;
   deletePaperPosition(id: string): Promise<void>;
+  // autonomous paper-trading book: cash account + trade log
+  getPaperAccount(): Promise<PaperAccount | null>;
+  savePaperAccount(a: Omit<PaperAccount, "id" | "updated_at">): Promise<PaperAccount>;
+  listPaperTrades(): Promise<PaperTrade[]>;
+  addPaperTrade(t: Omit<PaperTrade, "id" | "created_at">): Promise<PaperTrade>;
 
   // fx + snapshots
   latestFx(): Promise<FxRate | null>;

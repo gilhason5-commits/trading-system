@@ -5,6 +5,8 @@ import type {
   DailyDigest,
   FxRate,
   Lead,
+  PaperAccount,
+  PaperTrade,
   PaperPosition,
   PortfolioSnapshot,
   Position,
@@ -33,6 +35,8 @@ export class MockRepository implements Repository {
   private paperPositions: PaperPosition[] = [];
   private cachedQuotes: CachedQuote[] = [];
   private paperSnapshots: PortfolioSnapshot[] = [];
+  private paperAccount: PaperAccount | null = null;
+  private paperTrades: PaperTrade[] = [];
   private tracked: TrackedRecommendation[] = [];
   private fx: FxRate;
   private snapshots: PortfolioSnapshot[];
@@ -93,6 +97,26 @@ export class MockRepository implements Repository {
   }
   async deletePaperPosition(id: string) {
     this.paperPositions = this.paperPositions.filter((p) => p.id !== id);
+  }
+
+  async getPaperAccount() {
+    return this.paperAccount;
+  }
+  async savePaperAccount(a: Omit<PaperAccount, "id" | "updated_at">) {
+    this.paperAccount = {
+      ...a,
+      id: this.paperAccount?.id ?? nextId("pacct"),
+      updated_at: now(),
+    };
+    return this.paperAccount;
+  }
+  async listPaperTrades() {
+    return [...this.paperTrades].sort((a, b) => b.created_at.localeCompare(a.created_at));
+  }
+  async addPaperTrade(t: Omit<PaperTrade, "id" | "created_at">) {
+    const full: PaperTrade = { ...t, id: nextId("ptrade"), created_at: now() };
+    this.paperTrades.push(full);
+    return full;
   }
 
   async latestFx() {

@@ -6,7 +6,9 @@ import type {
   DailyDigest,
   FxRate,
   Lead,
+  PaperAccount,
   PaperPosition,
+  PaperTrade,
   PortfolioSnapshot,
   Position,
   Post,
@@ -118,6 +120,51 @@ export class SupabaseRepository implements Repository {
   async deletePaperPosition(id: string): Promise<void> {
     const { error } = await this.db.from("paper_positions").delete().eq("id", id);
     if (error) this.fail(error);
+  }
+
+  async getPaperAccount(): Promise<PaperAccount | null> {
+    const { data, error } = await this.db.from("paper_account").select("*").limit(1).maybeSingle();
+    if (error) {
+      if (/relation .* does not exist|could not find the table/i.test(error.message)) return null;
+      this.fail(error);
+    }
+    return (data ?? null) as PaperAccount | null;
+  }
+
+  async savePaperAccount(a: Omit<PaperAccount, "id" | "updated_at">): Promise<PaperAccount> {
+    const existing = await this.getPaperAccount();
+    const row = { ...a, updated_at: new Date().toISOString() };
+    if (existing) {
+      const { data, error } = await this.db
+        .from("paper_account")
+        .update(row)
+        .eq("id", existing.id)
+        .select()
+        .single();
+      if (error) this.fail(error);
+      return data as PaperAccount;
+    }
+    const { data, error } = await this.db.from("paper_account").insert(row).select().single();
+    if (error) this.fail(error);
+    return data as PaperAccount;
+  }
+
+  async listPaperTrades(): Promise<PaperTrade[]> {
+    const { data, error } = await this.db
+      .from("paper_trades")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (error) {
+      if (/relation .* does not exist|could not find the table/i.test(error.message)) return [];
+      this.fail(error);
+    }
+    return (data ?? []) as PaperTrade[];
+  }
+
+  async addPaperTrade(t: Omit<PaperTrade, "id" | "created_at">): Promise<PaperTrade> {
+    const { data, error } = await this.db.from("paper_trades").insert(t).select().single();
+    if (error) this.fail(error);
+    return data as PaperTrade;
   }
 
   // -------------------------------------------------------------------------

@@ -7,6 +7,8 @@ import { runScrapingStage } from "./scraping.ts";
 import { runResearchStage } from "./research.ts";
 import { runDigestStage } from "./digest.ts";
 import { runTrackingStage } from "./tracking.ts";
+import { runAutoTradeStage } from "./autotrade.ts";
+import { runXDiscoveryStage } from "./xdiscovery.ts";
 
 // The daily pipeline (spec §4): analysis → scraping → research → digest, run as one
 // unit that logs total cost to `runs`. Vercel Cron enqueues a trigger; the Worker
@@ -44,6 +46,9 @@ export async function runDailyPipeline(
   try {
     const analyses = await runAnalysisStage(ctx);
     const scrape = await runScrapingStage(ctx);
+    // Broaden discovery: search X via Grok for fresh, verified stock chatter →
+    // new leads that the research stage then vets like any other source.
+    await runXDiscoveryStage(ctx);
     const recommendations = await runResearchStage(ctx);
 
     // Retry whatever failed (e.g. Twelve Data rate-limits) after a delay, before
@@ -66,6 +71,9 @@ export async function runDailyPipeline(
 
     // Update the 7-day recommendation tracker from today's recommendations.
     await runTrackingStage(ctx);
+
+    // Autonomous paper-trading: act on the freshly-computed convictions.
+    await runAutoTradeStage(ctx);
 
     const digest = skipDigest ? null : await runDigestStage(ctx);
 
@@ -172,27 +180,32 @@ export async function pollPrices(ctx: RunContext = createRunContext()): Promise<
     });
   }
 
-  // Mirror the same once-a-day snapshot for the paper book so /paper can chart
-  // its development over time, exactly like the real portfolio. Best-effort: if
-  // the paper_snapshots table isn't there yet, don't break the price poll.
-  if (paper.length) {
-    try {
+  // Mirror the same once-a-day snapshot for the autonomous paper book so /paper
+  // can chart its development over time. Total value = cash + holdings, and P&L is
+  // vs the book's starting cash. Best-effort: don't break the poll on a missing
+  // table. Snapshot whenever there's an account or holdings.
+  try {
+    const account = await ctx.repo.getPaperAccount();
+    if (account || paper.length) {
+      const cash = account?.cash ?? 0;
+      const startCash = account?.starting_cash ?? cash;
       const paperViews = enrichPositions(paper, quotes, usdIls);
-      const paperUsd = paperViews.reduce((s, v) => s + v.market_value.usd, 0);
-      const paperIls = paperViews.reduce((s, v) => s + v.market_value.ils, 0);
-      const paperPl = paperViews.reduce((s, v) => s + v.unrealized_pl.usd, 0);
+      const holdingsUsd = paperViews.reduce((s, v) => s + v.market_value.usd, 0);
+      const holdingsIls = paperViews.reduce((s, v) => s + v.market_value.ils, 0);
+      const totalUsd2 = cash + holdingsUsd;
+      const totalIls2 = cash * usdIls + holdingsIls;
       const paperSnaps = await ctx.repo.listPaperSnapshots();
       if (paperSnaps.at(-1)?.date !== ctx.date) {
         await ctx.repo.addPaperSnapshot({
           date: ctx.date,
-          total_value_usd: round(paperUsd),
-          total_value_ils: round(paperIls),
-          total_pl_usd: round(paperPl),
+          total_value_usd: round(totalUsd2),
+          total_value_ils: round(totalIls2),
+          total_pl_usd: round(totalUsd2 - startCash),
         });
       }
-    } catch {
-      // paper-snapshot table missing or transient error — skip, real snapshot already saved
     }
+  } catch {
+    // paper-snapshot/account table missing or transient error — skip
   }
 }
 
