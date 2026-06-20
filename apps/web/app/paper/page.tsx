@@ -8,10 +8,12 @@ import { getPaperPortfolio } from "@/lib/paperPortfolio";
 export const dynamic = "force-dynamic";
 
 export default async function PaperPage() {
-  const [{ views, stats, usdIls, lastUpdated, account, cash, totalValueUsd, totalReturnUsd, totalReturnPct, trades, buildingTheses }, snapshots] =
+  const [{ views, stats, usdIls, lastUpdated, account, cash, totalValueUsd, totalReturnUsd, totalReturnPct, trades, buildingTheses, marketState, plannedBuys, plannedSells }, snapshots] =
     await Promise.all([getPaperPortfolio(), getRepository().listPaperSnapshots()]);
 
   const opened = account !== null;
+  const marketOpen = marketState === "REGULAR";
+  const hasIdeas = plannedBuys.length > 0 || plannedSells.length > 0;
 
   return (
     <div className="space-y-8">
@@ -46,6 +48,41 @@ export default async function PaperPage() {
               sub={formatPct(stats.day_pl_pct)}
               tone={stats.day_pl.usd}
             />
+          </section>
+
+          <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
+            <div className="mb-1 flex items-baseline justify-between">
+              <h2 className="text-lg font-semibold">💡 רעיונות למסחר {marketOpen ? "" : "לפתיחה הבאה"}</h2>
+              <span className="text-xs text-[var(--muted)]">
+                {marketOpen ? "השוק פתוח — מתבצע בזמן אמת" : `השוק ${marketState === "PRE" ? "לפני פתיחה" : marketState === "POST" ? "אחרי נעילה" : "סגור"} — יתבצע בפתיחה`}
+              </span>
+            </div>
+            {!hasIdeas ? (
+              <p className="text-sm text-[var(--muted)]">אין עדיין מספיק דאטה לרעיונות — אני בונה תזות וזה יתעדכן.</p>
+            ) : (
+              <div className="space-y-4">
+                {plannedBuys.length > 0 && (
+                  <div>
+                    <div className="mb-2 text-sm font-semibold pos">קניות מתוכננות ({plannedBuys.length})</div>
+                    <PaperTheses theses={plannedBuys} />
+                  </div>
+                )}
+                {plannedSells.length > 0 && (
+                  <div>
+                    <div className="mb-2 text-sm font-semibold neg">מכירות מתוכננות ({plannedSells.length})</div>
+                    <ul className="space-y-1 text-sm">
+                      {plannedSells.map((s) => (
+                        <li key={s.ticker} className="flex flex-wrap items-center gap-2">
+                          <span className="rounded bg-[var(--neg)] px-2 py-0.5 text-xs font-semibold text-white">מכירה</span>
+                          <span className="font-semibold">{s.ticker}</span>
+                          <span className="text-[var(--muted)]">— {s.reason}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
           </section>
 
           <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">

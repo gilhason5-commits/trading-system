@@ -1,6 +1,7 @@
 // Datasource barrel — all clients are interface + Mock + Live + factory.
 export * from "./twelvedata.ts";
 export * from "./technicals.ts";
+export * from "./yahoo.ts";
 export * from "./analysts.ts";
 export * from "./fmp.ts";
 export * from "./finnhub.ts";
