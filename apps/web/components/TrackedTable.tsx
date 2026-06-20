@@ -19,12 +19,35 @@ export interface TrackedRow {
   technical: number | null;
   fundamental: number | null;
   social: number | null;
-  /** ISO time of the most recent bullish / bearish mention. */
+  /** ISO time + source/claim of the most recent bullish / bearish mention. */
   lastBull: string | null;
+  lastBullInfo: MentionInfo | null;
   lastBear: string | null;
+  lastBearInfo: MentionInfo | null;
   reinforce_count: number;
   /** Analysis + sources for the detail modal (null if no recommendation found). */
   detail: RecCard | null;
+}
+
+export interface MentionInfo {
+  source: string;
+  claim: string;
+  url: string;
+}
+
+/** Date cell that reveals the source + what it said on hover. */
+function MentionCell({ when, info }: { when: string | null; info: MentionInfo | null }) {
+  if (!when) return <span className="text-[var(--muted)]">—</span>;
+  if (!info) return <span className="text-[var(--muted)]">{fmtWhen(when)}</span>;
+  return (
+    <span className="group relative inline-block cursor-help whitespace-nowrap text-[var(--muted)] underline decoration-dotted">
+      {fmtWhen(when)}
+      <span className="pointer-events-none invisible absolute bottom-full left-0 z-50 mb-1 w-64 whitespace-normal rounded-md border border-[var(--border)] bg-[var(--surface)] p-2 text-right text-xs shadow-lg group-hover:visible">
+        <span className="font-semibold text-[var(--text)]">{info.source}</span>
+        <span className="mt-1 block text-[var(--muted)]">“{info.claim}”</span>
+      </span>
+    </span>
+  );
 }
 
 function fmtWhen(iso: string | null): string {
@@ -104,8 +127,8 @@ export function TrackedTable({ rows }: { rows: TrackedRow[] }) {
                 <td className="px-3 py-2">{r.current !== null ? r.current.toLocaleString() : "—"}</td>
                 <td className="px-3 py-2">{r.ret !== null ? <Pct value={r.ret} /> : "—"}</td>
                 <td className="px-3 py-2"><Conviction row={r} /></td>
-                <td className="px-3 py-2 whitespace-nowrap text-[var(--muted)]">{fmtWhen(r.lastBull)}</td>
-                <td className="px-3 py-2 whitespace-nowrap text-[var(--muted)]">{fmtWhen(r.lastBear)}</td>
+                <td className="px-3 py-2"><MentionCell when={r.lastBull} info={r.lastBullInfo} /></td>
+                <td className="px-3 py-2"><MentionCell when={r.lastBear} info={r.lastBearInfo} /></td>
                 <td className="px-3 py-2">
                   {r.reinforce_count > 0 ? (
                     <span className="rounded bg-[var(--pos)] px-2 py-0.5 text-xs font-semibold text-black">×{r.reinforce_count}</span>

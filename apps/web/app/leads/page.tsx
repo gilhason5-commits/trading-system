@@ -1,6 +1,6 @@
 import { getRepository, type Post, type Recommendation, type Signal, type Source } from "@trading/core";
 import { RecommendationGrid, type RecCard, type TrailItem } from "@/components/RecommendationGrid";
-import { TrackedTable, type TrackedRow } from "@/components/TrackedTable";
+import { TrackedTable, type TrackedRow, type MentionInfo } from "@/components/TrackedTable";
 import { UpdatedNote } from "@/components/format";
 
 export const dynamic = "force-dynamic";
@@ -118,17 +118,26 @@ export default async function LeadsPage() {
         7,
         Math.floor((Date.parse(`${todayStr}T00:00:00Z`) - Date.parse(`${t.first_date}T00:00:00Z`)) / 86_400_000) + 1,
       );
-      // When each side was last heard (the conviction % itself is computed in the
-      // tracking stage as a weighted technical+fundamental+social blend).
+      // When each side was last heard + the source/claim (for the hover tooltip).
+      // (The conviction % itself is computed in the tracking stage.)
       let lastBull: string | null = null;
       let lastBear: string | null = null;
+      let lastBullInfo: MentionInfo | null = null;
+      let lastBearInfo: MentionInfo | null = null;
       for (const s of signals) {
         if (s.ticker.toUpperCase() !== t.ticker.toUpperCase()) continue;
-        const when = postsById.get(s.post_id)?.published_at ?? s.created_at;
+        const post = postsById.get(s.post_id);
+        const source = post ? sourcesById.get(post.source_id) : undefined;
+        const when = post?.published_at ?? s.created_at;
+        const info: MentionInfo = {
+          source: source ? `${discoveryType(source.platform, post!.external_id)} · ${source.handle}` : "מקור",
+          claim: s.claim,
+          url: post?.url ?? "",
+        };
         if (s.sentiment === "bullish") {
-          if (!lastBull || when > lastBull) lastBull = when;
+          if (!lastBull || when > lastBull) { lastBull = when; lastBullInfo = info; }
         } else if (s.sentiment === "bearish") {
-          if (!lastBear || when > lastBear) lastBear = when;
+          if (!lastBear || when > lastBear) { lastBear = when; lastBearInfo = info; }
         }
       }
 
@@ -163,7 +172,9 @@ export default async function LeadsPage() {
         fundamental: t.fundamental_score ?? null,
         social: t.social_score ?? null,
         lastBull,
+        lastBullInfo,
         lastBear,
+        lastBearInfo,
         reinforce_count: t.reinforce_count,
         detail,
       };
