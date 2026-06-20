@@ -55,11 +55,14 @@ export class CostAccumulator {
   tokensOut = 0;
   claudeCost = 0;
   scrapingCost = 0;
+  /** Distinct LLM providers used this run (for the run-history breakdown). */
+  readonly providers = new Set<string>();
 
   addClaude(usage: ClaudeUsage, model: string): void {
     this.tokensIn += usage.input_tokens + usage.cache_read_input_tokens + usage.cache_creation_input_tokens;
     this.tokensOut += usage.output_tokens;
     this.claudeCost += usageCostUsd(usage, model);
+    this.providers.add(providerOf(model));
   }
 
   /** Apify is pay-per-result; add the marginal cost of items pulled. */
@@ -78,8 +81,16 @@ export class CostAccumulator {
       claude_cost: round(this.claudeCost),
       scraping_cost: round(this.scrapingCost),
       total_cost: round(this.totalCost),
+      providers: [...this.providers].sort().join("+") || null,
     };
   }
+}
+
+/** Map a model id to its provider label for the run breakdown. */
+export function providerOf(model: string): string {
+  if (model.startsWith("grok")) return "Grok";
+  if (model.startsWith("claude")) return "Claude";
+  return "Mock";
 }
 
 function round(n: number): number {

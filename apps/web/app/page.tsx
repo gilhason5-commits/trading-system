@@ -1,6 +1,7 @@
-import { formatDual, formatUsd, getRepository, type AllocationSlice } from "@trading/core";
+import { formatDual, formatUsd, getRepository, type AllocationSlice, type Run } from "@trading/core";
 import { AddTransaction } from "@/components/AddTransaction";
 import { PnL, Pct, formatPct, UpdatedNote } from "@/components/format";
+import { RunHistory } from "@/components/RunHistory";
 import { Sparkline } from "@/components/Sparkline";
 import { getPortfolio } from "@/lib/portfolio";
 
@@ -55,7 +56,7 @@ export default async function DashboardPage() {
         />
       </section>
 
-      <MonthlyCost month={month} runs={monthRuns.length} cost={monthCost} />
+      <MonthlyCost month={month} monthRuns={monthRuns} cost={monthCost} allRuns={runs} />
 
       <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
         <div className="mb-2 flex items-baseline justify-between">
@@ -117,16 +118,21 @@ interface CostTotals {
   total_cost: number;
 }
 
-function MonthlyCost({ month, runs, cost }: { month: string; runs: number; cost: CostTotals }) {
+function MonthlyCost({ month, monthRuns, cost, allRuns }: { month: string; monthRuns: Run[]; cost: CostTotals; allRuns: Run[] }) {
+  const providers = [...new Set(monthRuns.flatMap((r) => (r.providers ? r.providers.split("+") : [])))];
+  const providerLabel = providers.length ? providers.join(" · ") : "—";
   return (
     <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
-      <div className="mb-3 flex items-baseline justify-between">
-        <h2 className="text-lg font-semibold">עלות ריצה חודשית</h2>
-        <span className="text-xs text-[var(--muted)]">{month} · {runs} ריצות</span>
+      <div className="mb-3 flex items-baseline justify-between gap-2">
+        <h2 className="text-lg font-semibold">עלות ריצות (Claude/Grok)</h2>
+        <div className="flex items-baseline gap-3">
+          <span className="text-xs text-[var(--muted)]">{month} · {monthRuns.length} ריצות · {providerLabel}</span>
+          <RunHistory runs={allRuns} />
+        </div>
       </div>
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Stat label="טוקנים (in/out)" value={`${cost.tokens_in.toLocaleString()} / ${cost.tokens_out.toLocaleString()}`} />
-        <Stat label="Claude" value={formatUsd(cost.claude_cost)} />
+        <Stat label="Claude/Grok" value={formatUsd(cost.claude_cost)} />
         <Stat label="סקרייפינג" value={formatUsd(cost.scraping_cost)} />
         <Stat label='סה"כ' value={formatUsd(cost.total_cost)} />
       </div>

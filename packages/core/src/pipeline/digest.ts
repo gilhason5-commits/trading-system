@@ -113,19 +113,16 @@ async function buildAggregation(ctx: RunContext) {
         consensus: a!.recommendation,
         big_banks: a!.big_bank_ratings.map((r) => `${r.firm}: ${r.grade} (${r.date})`),
       })),
-    general_market_news: generalMarketNews.map((n) => ({
-      headline: n.headline,
-      source: n.source,
-      region: n.region,
-    })),
   };
 
-  return { aggregation };
+  // General market news is rendered as its own wide section on /digests (not by the
+  // model), so it's returned separately and stored structured on the digest.
+  return { aggregation, generalMarketNews };
 }
 
 /** Compose and persist the daily digest (shown on /digests; no email). */
 export async function runDigestStage(ctx: RunContext): Promise<DailyDigest> {
-  const { aggregation } = await buildAggregation(ctx);
+  const { aggregation, generalMarketNews } = await buildAggregation(ctx);
 
   const prompt = digestPrompt(JSON.stringify(aggregation));
   const res = await ctx.claude.complete({
@@ -146,6 +143,7 @@ export async function runDigestStage(ctx: RunContext): Promise<DailyDigest> {
     date: ctx.date,
     html: parsed.html,
     key_insights: parsed.key_insights ?? [],
+    market_news: generalMarketNews.map((n) => ({ headline: n.headline, source: n.source, region: n.region })),
   });
 
   return digest;

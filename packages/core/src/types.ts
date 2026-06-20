@@ -314,6 +314,8 @@ export interface DailyDigest {
   date: string;
   html: string;
   key_insights: string[];
+  /** General capital-market headlines (Israel + US), rendered as a wide section. */
+  market_news?: { headline: string; source: string; region: string }[] | null;
   created_at: string;
 }
 
@@ -329,6 +331,8 @@ export interface Run {
   started_at: string;
   finished_at?: string;
   status: "running" | "ok" | "error";
+  /** Which LLM provider(s) served this run: "Claude", "Grok", or "Claude+Grok". */
+  providers?: string | null;
 }
 
 export interface Alert {
