@@ -12,6 +12,7 @@
     "digest": "node --env-file-if-exists=../../.env.local --experimental-transform-types src/run-digest.ts",
     "poll": "node --env-file-if-exists=../../.env.local --experimental-transform-types src/poll-once.ts",
     "autotrade": "node --env-file-if-exists=../../.env.local --experimental-transform-types src/auto-once.ts",
+    "thesis": "node --env-file-if-exists=../../.env.local --experimental-transform-types src/thesis-once.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

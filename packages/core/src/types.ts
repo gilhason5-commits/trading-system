@@ -101,6 +101,8 @@ export interface TradeDossier {
     big_banks: string[];
   } | null;
   quotes: TradeQuote[];
+  /** The multi-day thesis behind the trade: strength, days, and the decision flow. */
+  thesis?: { strength: number; days: number; steps: ThesisStep[] };
   /** The exit plan set at entry (buys): stop-loss + take-profit levels + rule. */
   plan?: {
     stop_price: number;
@@ -111,6 +113,40 @@ export interface TradeDossier {
   };
   /** Return % at exit (sells only). */
   ret_pct?: number;
+}
+
+export type ThesisDirection = "long" | "exit";
+export type ThesisStatus = "building" | "acted" | "dropped";
+
+/** One dated node in a thesis's research/decision flow (rendered as a flow chart). */
+export interface ThesisStep {
+  date: string;
+  /** Where it looked (e.g. "המלצת המערכת", "סריקת X", "חדשות ואינטרנט", "ניתוח טכני"). */
+  stage: string;
+  /** What it found. */
+  detail: string;
+  /** Contribution to the thesis strength (+ strengthens, − weakens). */
+  weight: number;
+}
+
+/**
+ * A multi-day thesis the paper trader builds before acting. A `long` thesis
+ * accumulates confirmations toward a buy; an `exit` thesis accumulates warning
+ * signs toward a sell. `steps` is the full audit trail shown as a flow chart.
+ */
+export interface PaperThesis {
+  id: string;
+  ticker: string;
+  direction: ThesisDirection;
+  status: ThesisStatus;
+  /** Current strength 0–100; the engine acts when it crosses the bar. */
+  strength: number;
+  /** Days the thesis has been building. */
+  days: number;
+  first_date: string;
+  steps: ThesisStep[];
+  updated_at: string;
+  created_at: string;
 }
 
 /** A single autonomous paper trade, logged with the reason it was taken. */

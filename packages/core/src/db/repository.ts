@@ -7,6 +7,7 @@ import type {
   Lead,
   PaperAccount,
   PaperPosition,
+  PaperThesis,
   PaperTrade,
   PortfolioSnapshot,
   Position,
@@ -41,6 +42,12 @@ export interface Repository {
   savePaperAccount(a: Omit<PaperAccount, "id" | "updated_at">): Promise<PaperAccount>;
   listPaperTrades(): Promise<PaperTrade[]>;
   addPaperTrade(t: Omit<PaperTrade, "id" | "created_at">): Promise<PaperTrade>;
+  // multi-day theses the engine builds before trading
+  listPaperTheses(): Promise<PaperThesis[]>;
+  upsertPaperThesis(
+    t: Omit<PaperThesis, "id" | "created_at" | "updated_at">,
+  ): Promise<PaperThesis>;
+  deletePaperThesis(id: string): Promise<void>;
 
   // fx + snapshots
   latestFx(): Promise<FxRate | null>;

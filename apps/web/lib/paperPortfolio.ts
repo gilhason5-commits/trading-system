@@ -3,6 +3,7 @@ import {
   enrichPositions,
   getRepository,
   type PaperAccount,
+  type PaperThesis,
   type PaperTrade,
   type PortfolioStats,
   type PositionView,
@@ -29,6 +30,8 @@ export interface PaperPortfolioData {
   totalReturnPct: number;
   /** Most recent autonomous trades, newest first. */
   trades: PaperTrade[];
+  /** Long theses still building toward a buy (strongest first). */
+  buildingTheses: PaperThesis[];
 }
 
 /**
@@ -38,13 +41,17 @@ export interface PaperPortfolioData {
  */
 export async function getPaperPortfolio(): Promise<PaperPortfolioData> {
   const repo = getRepository();
-  const [positions, fxRow, cached, account, trades] = await Promise.all([
+  const [positions, fxRow, cached, account, trades, theses] = await Promise.all([
     repo.listPaperPositions(),
     repo.latestFx(),
     repo.listCachedQuotes(),
     repo.getPaperAccount(),
     repo.listPaperTrades(),
+    repo.listPaperTheses(),
   ]);
+  const buildingTheses = theses
+    .filter((t) => t.direction === "long" && t.status === "building")
+    .sort((a, b) => b.strength - a.strength);
 
   const usdIls = fxRow?.rate ?? 3.62;
   const quotes = new Map<string, Quote>(cached.map((c) => [c.ticker, cachedToQuote(c)]));
@@ -72,5 +79,6 @@ export async function getPaperPortfolio(): Promise<PaperPortfolioData> {
     totalReturnUsd,
     totalReturnPct,
     trades,
+    buildingTheses,
   };
 }

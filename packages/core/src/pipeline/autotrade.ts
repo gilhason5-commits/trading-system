@@ -1,17 +1,19 @@
 import { fetchAnalystData } from "../datasources/analysts.ts";
-import { assessMarketContext, type MarketContext } from "../datasources/marketcontext.ts";
+import { assessMarketContext } from "../datasources/marketcontext.ts";
 import { isUsMarketOpen } from "../datasources/yahoo.ts";
 import { MIN_CONVICTION } from "../scoring.ts";
 import type {
   Currency,
   Market,
   PaperAccount,
+  PaperThesis,
   Post,
   Source,
   TradeDossier,
   TradeQuote,
   TrackedRecommendation,
 } from "../types.ts";
+import { BUY_BAR, EXIT_BAR } from "./thesis.ts";
 import type { RunContext } from "./context.ts";
 
 // Autonomous paper-trading engine. Once a day it manages the isolated paper book
@@ -77,6 +79,14 @@ export async function runAutoTradeStage(ctx: RunContext): Promise<void> {
   const convByTicker = new Map<string, TrackedRecommendation>(
     tracked.map((t) => [t.ticker.toUpperCase(), t]),
   );
+  // Theses drive the decisions: buy a matured LONG thesis, sell on a matured EXIT
+  // thesis (plus the always-on hard risk rules below).
+  const theses = await ctx.repo.listPaperTheses();
+  const longThesis = new Map<string, PaperThesis>();
+  const exitThesis = new Map<string, PaperThesis>();
+  for (const th of theses) {
+    (th.direction === "long" ? longThesis : exitThesis).set(th.ticker.toUpperCase(), th);
+  }
   const marketByTicker = new Map<string, Market>(
     (await ctx.repo.listLeads()).map((l) => [l.ticker.toUpperCase(), l.market]),
   );
@@ -106,7 +116,7 @@ export async function runAutoTradeStage(ctx: RunContext): Promise<void> {
   async function dossier(
     tr: TrackedRecommendation | undefined,
     ticker: string,
-    extra?: { ret_pct?: number; plan?: TradeDossier["plan"] },
+    extra?: { ret_pct?: number; plan?: TradeDossier["plan"]; thesis?: PaperThesis },
   ): Promise<string> {
     let analyst: TradeDossier["analyst"] = null;
     try {
@@ -134,6 +144,9 @@ export async function runAutoTradeStage(ctx: RunContext): Promise<void> {
       },
       analyst,
       quotes: quotesFor(ticker),
+      ...(extra?.thesis
+        ? { thesis: { strength: extra.thesis.strength, days: extra.thesis.days, steps: extra.thesis.steps } }
+        : {}),
       ...(extra?.plan ? { plan: extra.plan } : {}),
       ...(extra?.ret_pct != null ? { ret_pct: extra.ret_pct } : {}),
     };
@@ -163,15 +176,18 @@ export async function runAutoTradeStage(ctx: RunContext): Promise<void> {
     const tr = convByTicker.get(key);
     const conviction = tr?.conviction ?? null;
 
+    const exitTh = exitThesis.get(key);
     let reason: string | null = null;
-    if (!tr) {
-      reason = "ירדה מההמלצות הפעילות (אין יותר מעקב/קונביקשן) — סוגר פוזיציה";
-    } else if (conviction != null && conviction < MIN_CONVICTION) {
-      reason = `הקונביקשן ירד ל-${conviction}% (מתחת ל-${MIN_CONVICTION}%) — סוגר פוזיציה`;
-    } else if (retPct <= STRATEGY.stopLossPct) {
+    // Hard, always-on risk rules (don't wait for a thesis to mature).
+    if (retPct <= STRATEGY.stopLossPct) {
       reason = `סטופ-לוס: תשואה ${retPct.toFixed(1)}% (מתחת ל-${STRATEGY.stopLossPct}%)`;
     } else if (retPct >= STRATEGY.takeProfitPct) {
       reason = `מימוש רווח: תשואה +${retPct.toFixed(1)}% (מעל ${STRATEGY.takeProfitPct}%)`;
+    } else if (conviction != null && conviction < MIN_CONVICTION) {
+      reason = `הקונביקשן ירד ל-${conviction}% (מתחת ל-${MIN_CONVICTION}%) — סוגר פוזיציה`;
+    } else if (exitTh && exitTh.strength >= EXIT_BAR) {
+      // Soft exit: the multi-day exit thesis matured (deteriorating signals/chart).
+      reason = `תזת יציאה הבשילה (עוצמה ${exitTh.strength}/${EXIT_BAR}) — סימני היחלשות מצטברים`;
     }
     if (!reason) continue;
 
@@ -188,8 +204,10 @@ export async function runAutoTradeStage(ctx: RunContext): Promise<void> {
       value_usd: round2(proceedsUsd),
       conviction,
       reason: marketTag + reason,
-      analysis: await dossier(tr, p.ticker, { ret_pct: retPct }),
+      analysis: await dossier(tr, p.ticker, { ret_pct: retPct, thesis: exitTh }),
     });
+    // Reset both theses so the name can be reconsidered fresh later.
+    for (const th of [exitTh, longThesis.get(key)]) if (th) await ctx.repo.deletePaperThesis(th.id);
   }
 
   // ── 2) ENTRIES — deploy cash into the best tracked names not yet held ─────
@@ -205,18 +223,21 @@ export async function runAutoTradeStage(ctx: RunContext): Promise<void> {
   // Scale in gradually — don't deploy the whole book at once, and keep a cash buffer.
   let buysLeft = STRATEGY.maxNewBuysPerDay;
 
-  // Only buy names that are convincing from EVERY angle: blended conviction high
-  // AND no weak leg (technical, fundamental and social all clear the floor).
+  // Buy only names whose multi-day LONG thesis has matured past the bar. The
+  // thesis only reaches the bar when convincing from every angle (the weak-leg
+  // cap lives in the thesis stage), so this already encodes "sure from all sides".
   const f = STRATEGY.componentFloor;
-  const candidates = tracked
-    .filter((t) => (t.conviction ?? 0) >= STRATEGY.buyConviction)
-    .filter((t) => (t.technical_score ?? 0) >= f && (t.fundamental_score ?? 0) >= f && (t.social_score ?? 0) >= f)
-    .filter((t) => !heldNow.has(t.ticker.toUpperCase()))
-    .sort((a, b) => (b.conviction ?? 0) - (a.conviction ?? 0) || (b.conviction_delta ?? 0) - (a.conviction_delta ?? 0));
+  const candidates = theses
+    .filter((th) => th.direction === "long" && th.status === "building" && th.strength >= BUY_BAR)
+    .filter((th) => !heldNow.has(th.ticker.toUpperCase()))
+    .sort((a, b) => b.strength - a.strength);
 
-  for (const t of candidates) {
+  for (const th of candidates) {
     if (slots <= 0 || buysLeft <= 0) break;
-    const key = t.ticker.toUpperCase();
+    const key = th.ticker.toUpperCase();
+    const t = convByTicker.get(key);
+    // Final safety: still require all legs ≥ floor at execution time.
+    if (!t || (t.technical_score ?? 0) < f || (t.fundamental_score ?? 0) < f || (t.social_score ?? 0) < f) continue;
     const market = marketByTicker.get(key) ?? "US";
     const ep = await execPrice(t.ticker, market);
     if (!ep) continue;
@@ -269,12 +290,21 @@ export async function runAutoTradeStage(ctx: RunContext): Promise<void> {
       conviction: t.conviction ?? null,
       reason:
         marketTag +
-        `קנייה: קונביקשן ${t.conviction}% (כל הרכיבים מעל ${f})` +
-        (t.conviction_delta ? ` (${t.conviction_delta > 0 ? "+" : ""}${Math.round(t.conviction_delta)}% מהריצה הקודמת)` : "") +
+        `קנייה: תזה הבשילה (עוצמה ${th.strength}/${BUY_BAR}, ${th.days} ימי בנייה) · קונביקשן ${t.conviction}% (כל הרכיבים מעל ${f})` +
         ` · ט ${t.technical_score ?? "—"}/פ ${t.fundamental_score ?? "—"}/ח ${t.social_score ?? "—"}` +
         (t.reinforce_count ? ` · חוזק ×${t.reinforce_count}` : "") +
         ` · ${plan.exit_rule}`,
-      analysis: await dossier(t, t.ticker, { plan }),
+      analysis: await dossier(t, t.ticker, { plan, thesis: th }),
+    });
+    // Mark the thesis acted so it isn't re-bought; it's now managed as a holding.
+    await ctx.repo.upsertPaperThesis({
+      ticker: th.ticker,
+      direction: "long",
+      status: "acted",
+      strength: th.strength,
+      days: th.days,
+      first_date: th.first_date,
+      steps: th.steps,
     });
   }
 

@@ -36,10 +36,28 @@ function parseDigest(text: string): { html: string; key_insights: string[] } {
 }
 
 async function buildAggregation(ctx: RunContext) {
-  const [positions, analyses] = await Promise.all([
+  const [positions, analyses, signals, posts] = await Promise.all([
     ctx.repo.listPositions(),
     ctx.repo.listAnalyses(ctx.date),
+    ctx.repo.listSignals(),
+    ctx.repo.listPosts(),
   ]);
+
+  // Good/bad signal scan for the names we HOLD — so the digest can say buy-more /
+  // sell / hold with the actual bullish/bearish evidence, not just the analysis.
+  const postsById = new Map(posts.map((p) => [p.id, p]));
+  const held = new Set(positions.map((p) => p.ticker.toUpperCase()));
+  const holdingSignals = new Map<string, { bullish: string[]; bearish: string[] }>();
+  for (const s of signals) {
+    const k = s.ticker.toUpperCase();
+    if (!held.has(k)) continue;
+    const bucket = holdingSignals.get(k) ?? { bullish: [], bearish: [] };
+    const when = postsById.get(s.post_id)?.published_at ?? s.created_at ?? "";
+    const line = `${s.claim}${when ? ` (${when.slice(0, 10)})` : ""}`;
+    if (s.sentiment === "bullish") bucket.bullish.push(line);
+    else if (s.sentiment === "bearish") bucket.bearish.push(line);
+    holdingSignals.set(k, bucket);
+  }
 
   // News window: last 4 days.
   const fromD = new Date(`${ctx.date}T00:00:00Z`);
@@ -78,6 +96,9 @@ async function buildAggregation(ctx: RunContext) {
       ticker: a.ticker, stance: a.stance, confidence: a.confidence,
       technical: a.technical_summary, fundamental: a.fundamental_summary,
       key_events: a.key_events, risk_flags: a.risk_flags,
+      // Good/bad social-signal evidence for this holding (capped).
+      bullish_signals: (holdingSignals.get(a.ticker.toUpperCase())?.bullish ?? []).slice(0, 5),
+      bearish_signals: (holdingSignals.get(a.ticker.toUpperCase())?.bearish ?? []).slice(0, 5),
     })),
     market_news: marketNews.slice(0, 10).map((i) => `${i.headline} (${i.source})`),
     portfolio_news: portfolioNews.filter((p) => p.headlines.length > 0),

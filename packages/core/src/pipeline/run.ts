@@ -7,6 +7,7 @@ import { runScrapingStage } from "./scraping.ts";
 import { runResearchStage } from "./research.ts";
 import { runDigestStage } from "./digest.ts";
 import { runTrackingStage } from "./tracking.ts";
+import { runThesisStage } from "./thesis.ts";
 import { runAutoTradeStage } from "./autotrade.ts";
 import { runXDiscoveryStage } from "./xdiscovery.ts";
 
@@ -71,6 +72,14 @@ export async function runDailyPipeline(
 
     // Update the 7-day recommendation tracker from today's recommendations.
     await runTrackingStage(ctx);
+
+    // Build/refresh the paper trader's multi-day theses (research + accumulation);
+    // the actual buying/selling happens in pollPrices during US market hours.
+    try {
+      await runThesisStage(ctx);
+    } catch (err) {
+      await ctx.repo.addAlert({ kind: "error", message: `בניית תזות נכשלה: ${(err as Error).message}` });
+    }
 
     const digest = skipDigest ? null : await runDigestStage(ctx);
 

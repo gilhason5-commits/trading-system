@@ -119,7 +119,9 @@ export function digestPrompt(aggregationJson: string): Prompt {
         "signals, or new stock leads/recommendations (those live on the leads page). Exactly four sections:",
       "1) תובנות היום — לכל מניה בתיק (analyses) המלצה ברורה ובולטת: **למכור/לצמצם** (stance=trim), " +
         "**לחזק/להוסיף** (stance=add), או **להמשיך להחזיק** (stance=hold) — עם נימוק קצר משילוב טכני+פונדמנטלי, " +
-        "אירועים מרכזיים (key_events) וסיכונים (risk_flags).",
+        "אירועים מרכזיים (key_events) וסיכונים (risk_flags). שקלל במפורש את האיתותים הטובים (bullish_signals) " +
+        "מול הרעים (bearish_signals) של כל מניה — אם יש אזכורים שליליים/הרעה ציין זאת ונטה ל-trim, אם יש חיזוקים " +
+        "חיוביים ברורים נטה ל-add; הצג בקצרה את הראיות לכל צד.",
       "2) חדשות ואירועים הנוגעים לתיק — חדשות מיקרו ספציפיות לכל מניה בתיק (portfolio_news) " +
         "וחדשות מאקרו/שוק (market_news) שרלוונטיות ישירות להחזקות. הסבר בקצרה את ההשפעה על התיק. " +
         "(חדשות שוק כלליות שאינן קשורות לתיק שמורות לסקשן 4 — אל תכפיל אותן כאן.)",

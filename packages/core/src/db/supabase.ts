@@ -8,6 +8,7 @@ import type {
   Lead,
   PaperAccount,
   PaperPosition,
+  PaperThesis,
   PaperTrade,
   PortfolioSnapshot,
   Position,
@@ -165,6 +166,45 @@ export class SupabaseRepository implements Repository {
     const { data, error } = await this.db.from("paper_trades").insert(t).select().single();
     if (error) this.fail(error);
     return data as PaperTrade;
+  }
+
+  async listPaperTheses(): Promise<PaperThesis[]> {
+    const { data, error } = await this.db.from("paper_theses").select("*");
+    if (error) {
+      if (/relation .* does not exist|could not find the table/i.test(error.message)) return [];
+      this.fail(error);
+    }
+    return (data ?? []) as PaperThesis[];
+  }
+
+  async upsertPaperThesis(
+    t: Omit<PaperThesis, "id" | "created_at" | "updated_at">,
+  ): Promise<PaperThesis> {
+    const { data: existing } = await this.db
+      .from("paper_theses")
+      .select("id")
+      .ilike("ticker", t.ticker)
+      .eq("direction", t.direction)
+      .maybeSingle();
+    const row = { ...t, updated_at: new Date().toISOString() };
+    if (existing) {
+      const { data, error } = await this.db
+        .from("paper_theses")
+        .update(row)
+        .eq("id", (existing as { id: string }).id)
+        .select()
+        .single();
+      if (error) this.fail(error);
+      return data as PaperThesis;
+    }
+    const { data, error } = await this.db.from("paper_theses").insert(row).select().single();
+    if (error) this.fail(error);
+    return data as PaperThesis;
+  }
+
+  async deletePaperThesis(id: string): Promise<void> {
+    const { error } = await this.db.from("paper_theses").delete().eq("id", id);
+    if (error) this.fail(error);
   }
 
   // -------------------------------------------------------------------------

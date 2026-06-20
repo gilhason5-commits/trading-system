@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { PaperTrade, TradeDossier } from "@trading/core";
+import type { PaperTrade, ThesisStep, TradeDossier } from "@trading/core";
 import { TradingViewChart } from "@/components/TradingViewChart";
 
 const PLATFORM_LABEL: Record<string, string> = {
@@ -114,6 +114,12 @@ function DossierModal({ trade, onClose }: { trade: PaperTrade; onClose: () => vo
           <p className="text-sm text-[var(--muted)]">אין נתוני ניתוח שמורים לפעולה זו.</p>
         ) : (
           <div className="space-y-4">
+            {d.thesis && (
+              <Box title={`🔀 תרשים זרימה של ההחלטה — עוצמת תזה ${d.thesis.strength} · ${d.thesis.days} ימי בנייה`}>
+                <ThesisFlow steps={d.thesis.steps} decision={trade.action === "buy" ? `קנייה ${trade.ticker}` : `מכירה ${trade.ticker}`} />
+              </Box>
+            )}
+
             {d.market.summary && (
               <Box title="מצב שוק (מחקר לפני הפעולה)">
                 <p className="text-sm">
@@ -200,6 +206,47 @@ function DossierModal({ trade, onClose }: { trade: PaperTrade; onClose: () => vo
         )}
       </div>
     </div>
+  );
+}
+
+export function ThesisFlow({ steps, decision }: { steps: ThesisStep[]; decision?: string }) {
+  const list = steps;
+  return (
+    <ol className="relative space-y-0">
+      {list.map((s, i) => (
+        <li key={i} className="relative flex gap-3 pb-4">
+          {/* connector line */}
+          {i < list.length && (
+            <span className="absolute right-[7px] top-4 h-full w-px bg-[var(--border)]" aria-hidden />
+          )}
+          <span
+            className={`relative z-10 mt-1 h-3.5 w-3.5 shrink-0 rounded-full border-2 ${
+              s.weight > 0 ? "border-[var(--pos)] bg-[var(--pos)]" : s.weight < 0 ? "border-[var(--neg)] bg-[var(--neg)]" : "border-[var(--muted)] bg-[var(--surface)]"
+            }`}
+            aria-hidden
+          />
+          <div className="flex-1">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-semibold">{s.stage}</span>
+              <span className="flex items-center gap-2 whitespace-nowrap text-xs">
+                <span className="text-[var(--muted)]">{s.date}</span>
+                {s.weight !== 0 && (
+                  <span className={s.weight > 0 ? "pos" : "neg"}>{s.weight > 0 ? "+" : ""}{s.weight}</span>
+                )}
+              </span>
+            </div>
+            <p className="text-xs text-[var(--muted)]">{s.detail}</p>
+          </div>
+        </li>
+      ))}
+      {/* final node */}
+      <li className="relative flex gap-3">
+        <span className="relative z-10 mt-1 h-3.5 w-3.5 shrink-0 rounded-full bg-[var(--text)]" aria-hidden />
+        <div className="flex-1">
+          <span className="text-sm font-bold">{decision ? `↓ החלטה: ${decision}` : "↓ ממשיך לצבור עד שהתזה תעבור את הסף"}</span>
+        </div>
+      </li>
+    </ol>
   );
 }
 
