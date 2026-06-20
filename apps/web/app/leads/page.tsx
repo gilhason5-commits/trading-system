@@ -1,4 +1,4 @@
-import { getRepository, type Post, type Recommendation, type Signal, type Source } from "@trading/core";
+import { getRepository, MIN_CONVICTION, type Post, type Recommendation, type Signal, type Source } from "@trading/core";
 import { RecommendationGrid, type RecCard, type TrailItem } from "@/components/RecommendationGrid";
 import { TrackedTable, type TrackedRow, type MentionInfo } from "@/components/TrackedTable";
 import { UpdatedNote } from "@/components/format";
@@ -73,12 +73,24 @@ export default async function LeadsPage() {
   const priceByTicker = new Map(cached.map((c) => [c.ticker.toUpperCase(), c]));
   const todayStr = new Date().toISOString().slice(0, 10);
 
-  // Verified recommendations, latest run only, ranked best → worst.
+  // Final buy-conviction per ticker (from tracking). Anything scored below the
+  // relevance floor is hidden from BOTH the grid and the tracking table right now
+  // (the pipeline drops them permanently on its next run). Tickers with no
+  // conviction yet (null) are kept — they just haven't been scored.
+  const convictionByTicker = new Map(
+    tracked.map((t) => [t.ticker.toUpperCase(), t.conviction ?? null]),
+  );
+  const aboveFloor = (ticker: string): boolean => {
+    const cv = convictionByTicker.get(ticker.toUpperCase());
+    return cv == null || cv >= MIN_CONVICTION;
+  };
+
+  // Verified recommendations, latest run only, ranked best → worst, ≥60% only.
   const verifiedAll = recommendations
     .filter((r) => (r.verified_sources ?? []).length > 0)
     .sort((a, b) => quality(b) - quality(a));
   const latestDate = verifiedAll.reduce((m, r) => (r.date > m ? r.date : m), "");
-  const verified = verifiedAll.filter((r) => r.date === latestDate);
+  const verified = verifiedAll.filter((r) => r.date === latestDate && aboveFloor(r.ticker));
 
   const cards: RecCard[] = verified.map((rec, i) => {
     const trail = buildTrail(rec.ticker, signals, postsById, sourcesById);
@@ -110,6 +122,7 @@ export default async function LeadsPage() {
   // Tracking: enrich each tracked ticker with price/performance + clickable analysis.
   const trackingRows: TrackedRow[] = tracked
     .slice()
+    .filter((t) => t.conviction == null || t.conviction >= MIN_CONVICTION) // drop sub-floor names
     .sort((a, b) => (b.conviction ?? -1) - (a.conviction ?? -1)) // best buy-conviction first
     .map((t) => {
       const cur = priceByTicker.get(t.ticker.toUpperCase());

@@ -11,6 +11,14 @@ const W_TECHNICAL = 0.35;
 const W_FUNDAMENTAL = 0.35;
 const W_SOCIAL = 0.3;
 
+/**
+ * Minimum blended buy-conviction for a recommendation to stay relevant. Anything
+ * below this (incl. a name that started ≥60 and slid under it on a negative
+ * mention) is dropped from recommendations + tracking — it can re-enter fresh if
+ * it's recommended again later.
+ */
+export const MIN_CONVICTION = 60;
+
 const clamp = (n: number): number => Math.max(0, Math.min(100, Math.round(n)));
 
 export interface ConvictionScores {

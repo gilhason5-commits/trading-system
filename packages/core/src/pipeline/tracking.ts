@@ -1,4 +1,4 @@
-import { blendConviction, fundamentalScore, socialScore, technicalScore } from "../scoring.ts";
+import { blendConviction, fundamentalScore, MIN_CONVICTION, socialScore, technicalScore } from "../scoring.ts";
 import type { RunContext } from "./context.ts";
 
 // Recommendation tracking (7-day follow). After the research stage, today's
@@ -100,6 +100,14 @@ export async function runTrackingStage(ctx: RunContext): Promise<void> {
     const social = socialScore(bb.bull, bb.bear);
     const conviction = blendConviction(technical, fundamental, social);
     const convictionDelta = t.conviction != null ? conviction - t.conviction : 0;
+
+    // Buy-conviction fell under the relevance floor (incl. a name that slid from
+    // ≥60 to <60 on a negative mention) → drop it from tracking AND the
+    // recommendations grid. It can re-enter fresh if recommended again later.
+    if (conviction < MIN_CONVICTION) {
+      await ctx.repo.dismissTicker(t.ticker);
+      continue;
+    }
 
     // Reinforce on a fresh mention today (not for names first added today).
     let reinforce = t.reinforce_count;
