@@ -25,6 +25,11 @@ export const MODEL_PRICING: Record<string, ModelPrice> = {
   "claude-sonnet-4-6": { input: 3, output: 15 },
   "claude-haiku-4-5": { input: 1, output: 5 },
   "claude-fable-5": { input: 10, output: 50 },
+  // xAI Grok (fallback) — approximate per-1M pricing.
+  "grok-4.3": { input: 3, output: 15 },
+  "grok-4.20-0309-reasoning": { input: 3, output: 15 },
+  "grok-4.20-0309-non-reasoning": { input: 3, output: 15 },
+  "grok-4.20-multi-agent-0309": { input: 5, output: 25 },
 };
 
 export const DEFAULT_MODEL = "claude-opus-4-8";

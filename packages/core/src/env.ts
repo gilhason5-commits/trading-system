@@ -19,6 +19,9 @@ const schema = z.object({
   X_AUTH_TOKEN: z.string().optional(),
   X_CT0: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
+  /** xAI (Grok) — used as an automatic fallback when Claude fails / runs out of credits. */
+  XAI_API_KEY: z.string().optional(),
+  XAI_MODEL: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
   SUPABASE_URL: z.string().url().optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),

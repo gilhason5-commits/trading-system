@@ -133,14 +133,79 @@ export class LiveClaude implements ClaudeClient {
   }
 }
 
+// ── Grok (xAI, OpenAI-compatible) — used as a fallback for Claude ──────────────
+const DEFAULT_GROK_MODEL = "grok-4.20-0309-non-reasoning";
+
+export class LiveGrok implements ClaudeClient {
+  constructor(
+    private readonly apiKey: string,
+    private readonly model: string = DEFAULT_GROK_MODEL,
+  ) {}
+
+  async complete(opts: CompleteOptions): Promise<ClaudeResult> {
+    const res = await fetch("https://api.x.ai/v1/chat/completions", {
+      method: "POST",
+      headers: { authorization: `Bearer ${this.apiKey}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        model: this.model,
+        max_tokens: Math.max(opts.maxTokens ?? 2048, 4096), // headroom for reasoning models
+        messages: [
+          { role: "system", content: opts.system },
+          { role: "user", content: opts.user },
+        ],
+      }),
+    });
+    if (!res.ok) throw new Error(`xAI ${this.model}: HTTP ${res.status} ${(await res.text()).slice(0, 160)}`);
+    const j = (await res.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+      usage?: { prompt_tokens?: number; completion_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } };
+    };
+    const text = j.choices?.[0]?.message?.content ?? "";
+    const u = j.usage ?? {};
+    return {
+      text,
+      model: this.model,
+      usage: {
+        input_tokens: u.prompt_tokens ?? 0,
+        output_tokens: u.completion_tokens ?? 0,
+        cache_read_input_tokens: u.prompt_tokens_details?.cached_tokens ?? 0,
+        cache_creation_input_tokens: 0,
+      },
+    };
+  }
+}
+
+/** Tries the primary LLM; on any failure (e.g. Claude out of credits) uses the fallback. */
+export class FallbackClaude implements ClaudeClient {
+  constructor(
+    private readonly primary: ClaudeClient,
+    private readonly fallback: ClaudeClient,
+  ) {}
+
+  async complete(opts: CompleteOptions): Promise<ClaudeResult> {
+    try {
+      return await this.primary.complete(opts);
+    } catch (err) {
+      console.warn(`[llm] primary failed (${(err as Error).message.slice(0, 140)}) — falling back to Grok`);
+      return await this.fallback.complete(opts);
+    }
+  }
+}
+
 // ── Factory ──────────────────────────────────────────────────────────────────
 let instance: ClaudeClient | null = null;
 
 export function getClaude(): ClaudeClient {
   if (instance) return instance;
-  instance = isLive("ANTHROPIC_API_KEY")
-    ? new LiveClaude(getEnv().ANTHROPIC_API_KEY!)
-    : new MockClaude();
+  const env = getEnv();
+  const live = env.DATA_MODE === "live";
+  const claude = live && env.ANTHROPIC_API_KEY ? new LiveClaude(env.ANTHROPIC_API_KEY) : null;
+  const grok = live && env.XAI_API_KEY ? new LiveGrok(env.XAI_API_KEY, env.XAI_MODEL) : null;
+
+  // Claude primary + Grok fallback when both are configured; otherwise whichever
+  // exists; else the mock.
+  if (claude && grok) instance = new FallbackClaude(claude, grok);
+  else instance = claude ?? grok ?? new MockClaude();
   return instance;
 }
 
