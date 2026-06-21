@@ -199,6 +199,47 @@ export interface TrackedRecommendation {
   created_at: string;
 }
 
+/** One piece of raw social evidence captured at observation time. */
+export interface SocialEvidenceItem {
+  platform: string;
+  handle: string;
+  claim: string;
+  url: string;
+  sentiment: Sentiment;
+}
+
+/**
+ * Immutable point-in-time record of a recommended ticker's factor scores + the
+ * raw social evidence behind them, with forward returns filled in as days pass.
+ * The validation dataset (see runValidationStage): append-only, never mutated
+ * except the forward-return columns. Lets us measure whether the score actually
+ * predicts returns (IC / quantiles), including per-source social analysis.
+ */
+export interface ScoreObservation {
+  id: string;
+  ticker: string;
+  market: Market;
+  /** YYYY-MM-DD the ticker was first recommended (point-in-time). */
+  obs_date: string;
+  /** Price when first observed (entry), native currency. */
+  entry_price: number | null;
+  entry_currency: Currency | null;
+  technical_score: number | null;
+  fundamental_score: number | null;
+  social_score: number | null;
+  conviction: number | null;
+  bull_count: number;
+  bear_count: number;
+  mention_count: number;
+  social_evidence: SocialEvidenceItem[];
+  /** Forward return (%) vs entry_price at +1/+3/+5/+7 days; null until it elapses. */
+  ret_1d: number | null;
+  ret_3d: number | null;
+  ret_5d: number | null;
+  ret_7d: number | null;
+  created_at: string;
+}
+
 /** A position enriched with live price + P&L, ready for the dashboard. */
 export interface PositionView extends Position {
   price_native: number;

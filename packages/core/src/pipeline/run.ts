@@ -7,6 +7,7 @@ import { runScrapingStage } from "./scraping.ts";
 import { runResearchStage } from "./research.ts";
 import { runDigestStage } from "./digest.ts";
 import { runTrackingStage } from "./tracking.ts";
+import { runValidationStage } from "./validation.ts";
 import { runThesisStage } from "./thesis.ts";
 import { runAutoTradeStage } from "./autotrade.ts";
 import { runXDiscoveryStage } from "./xdiscovery.ts";
@@ -72,6 +73,15 @@ export async function runDailyPipeline(
 
     // Update the 7-day recommendation tracker from today's recommendations.
     await runTrackingStage(ctx);
+
+    // Append-only validation log: snapshot today's fresh recommendations (scores +
+    // raw social evidence) and backfill forward returns — the dataset we measure
+    // the score against. Best-effort: never break the run on a logging failure.
+    try {
+      await runValidationStage(ctx);
+    } catch (err) {
+      await ctx.repo.addAlert({ kind: "error", message: `לוג ולידציה נכשל: ${(err as Error).message}` });
+    }
 
     // Build/refresh the paper trader's multi-day theses (research + accumulation);
     // the actual buying/selling happens in pollPrices during US market hours.

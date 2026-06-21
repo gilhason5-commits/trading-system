@@ -5,6 +5,7 @@ export * from "./scraping.ts";
 export * from "./research.ts";
 export * from "./digest.ts";
 export * from "./tracking.ts";
+export * from "./validation.ts";
 export * from "./thesis.ts";
 export * from "./autotrade.ts";
 export * from "./xdiscovery.ts";

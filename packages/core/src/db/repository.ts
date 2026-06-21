@@ -15,6 +15,7 @@ import type {
   Recommendation,
   Run,
   Settings,
+  ScoreObservation,
   Signal,
   Source,
   TrackedRecommendation,
@@ -91,6 +92,15 @@ export interface Repository {
   /** Dismiss a ticker: remove its recommendations, lead and tracking so it can
    *  re-enter fresh if it's recommended again. */
   dismissTicker(ticker: string): Promise<void>;
+
+  // score observations (append-only validation dataset)
+  listScoreObservations(): Promise<ScoreObservation[]>;
+  /** Insert a point-in-time observation; no-op if one already exists for (ticker, obs_date). */
+  addScoreObservation(o: Omit<ScoreObservation, "id" | "created_at">): Promise<void>;
+  updateScoreObservationReturns(
+    id: string,
+    returns: Partial<Pick<ScoreObservation, "ret_1d" | "ret_3d" | "ret_5d" | "ret_7d">>,
+  ): Promise<void>;
 
   // digests + runs + alerts + settings
   listDigests(): Promise<DailyDigest[]>;

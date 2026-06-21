@@ -15,6 +15,7 @@ import type {
   Post,
   Recommendation,
   Run,
+  ScoreObservation,
   Settings,
   Signal,
   Source,
@@ -504,6 +505,35 @@ export class SupabaseRepository implements Repository {
       const { error } = await this.db.from(table).delete().ilike("ticker", ticker);
       if (error) this.fail(error);
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // score observations (append-only validation dataset)
+  // -------------------------------------------------------------------------
+
+  async listScoreObservations(): Promise<ScoreObservation[]> {
+    const { data, error } = await this.db
+      .from("score_observations")
+      .select("*")
+      .order("obs_date", { ascending: false });
+    if (error) this.fail(error);
+    return (data ?? []) as ScoreObservation[];
+  }
+
+  async addScoreObservation(o: Omit<ScoreObservation, "id" | "created_at">): Promise<void> {
+    // Immutable: keep the first snapshot if one already exists for (ticker, obs_date).
+    const { error } = await this.db
+      .from("score_observations")
+      .upsert(o, { onConflict: "ticker,obs_date", ignoreDuplicates: true });
+    if (error) this.fail(error);
+  }
+
+  async updateScoreObservationReturns(
+    id: string,
+    returns: Partial<Pick<ScoreObservation, "ret_1d" | "ret_3d" | "ret_5d" | "ret_7d">>,
+  ): Promise<void> {
+    const { error } = await this.db.from("score_observations").update(returns).eq("id", id);
+    if (error) this.fail(error);
   }
 
   // -------------------------------------------------------------------------

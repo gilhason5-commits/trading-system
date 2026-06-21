@@ -15,6 +15,7 @@ import type {
   Recommendation,
   Run,
   Settings,
+  ScoreObservation,
   Signal,
   Source,
   TrackedRecommendation,
@@ -40,6 +41,7 @@ export class MockRepository implements Repository {
   private paperTrades: PaperTrade[] = [];
   private paperTheses: PaperThesis[] = [];
   private tracked: TrackedRecommendation[] = [];
+  private scoreObservations: ScoreObservation[] = [];
   private fx: FxRate;
   private snapshots: PortfolioSnapshot[];
   private analyses: Analysis[];
@@ -272,6 +274,24 @@ export class MockRepository implements Repository {
     this.recommendations = this.recommendations.filter((r) => r.ticker.toUpperCase() !== t);
     this.leads = this.leads.filter((l) => l.ticker.toUpperCase() !== t);
     this.tracked = this.tracked.filter((x) => x.ticker.toUpperCase() !== t);
+  }
+
+  async listScoreObservations() {
+    return [...this.scoreObservations];
+  }
+  async addScoreObservation(o: Omit<ScoreObservation, "id" | "created_at">) {
+    const exists = this.scoreObservations.some(
+      (x) => x.ticker.toUpperCase() === o.ticker.toUpperCase() && x.obs_date === o.obs_date,
+    );
+    if (exists) return; // immutable: keep the first snapshot
+    this.scoreObservations.push({ ...o, id: nextId("obs"), created_at: now() });
+  }
+  async updateScoreObservationReturns(
+    id: string,
+    returns: Partial<Pick<ScoreObservation, "ret_1d" | "ret_3d" | "ret_5d" | "ret_7d">>,
+  ) {
+    const i = this.scoreObservations.findIndex((x) => x.id === id);
+    if (i >= 0) this.scoreObservations[i] = { ...this.scoreObservations[i]!, ...returns };
   }
 
   async listDigests() {
