@@ -127,9 +127,12 @@ export default async function LeadsPage() {
     .map((t) => {
       const cur = priceByTicker.get(t.ticker.toUpperCase());
       const ret = t.entry_price && cur ? ((cur.price - t.entry_price) / t.entry_price) * 100 : null;
+      // Day N of the rolling 7-day follow window, counted from the last mention —
+      // a fresh mention resets it to 1/7 (see tracking stage) so an actively
+      // talked-about name keeps being followed.
       const dayN = Math.min(
         7,
-        Math.floor((Date.parse(`${todayStr}T00:00:00Z`) - Date.parse(`${t.first_date}T00:00:00Z`)) / 86_400_000) + 1,
+        Math.floor((Date.parse(`${todayStr}T00:00:00Z`) - Date.parse(`${t.last_seen_date}T00:00:00Z`)) / 86_400_000) + 1,
       );
       // When each side was last heard + the source/claim (for the hover tooltip).
       // (The conviction % itself is computed in the tracking stage.)

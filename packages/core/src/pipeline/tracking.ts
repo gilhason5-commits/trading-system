@@ -109,13 +109,19 @@ export async function runTrackingStage(ctx: RunContext): Promise<void> {
       continue;
     }
 
-    // Reinforce on a fresh mention today (not for names first added today).
+    // Reinforce on a fresh mention today (not for names first added today). A new
+    // mention rolls the 7-day follow window forward (expires = today + 7) so a name
+    // that keeps getting talked about stays tracked — the day counter (shown vs
+    // last_seen_date) resets to 1/7. first_date stays put so the validation log
+    // still records each name once at its true first appearance.
     let reinforce = t.reinforce_count;
     let lastSeen = t.last_seen_date;
     let trend = t.sentiment_trend;
+    let expires = t.expires_date;
     if (mentionedToday.has(key) && t.last_seen_date < ctx.date) {
       reinforce += 1;
       lastSeen = ctx.date;
+      expires = addDays(ctx.date, 7);
       const delta = social - (t.social_score ?? t.last_social_score);
       trend = delta > 2 ? "strengthened" : delta < -2 ? "weakened" : "stable";
     }
@@ -130,7 +136,7 @@ export async function runTrackingStage(ctx: RunContext): Promise<void> {
       last_social_score: social,
       reinforce_count: reinforce,
       sentiment_trend: trend,
-      expires_date: t.expires_date,
+      expires_date: expires,
       technical_score: technical,
       fundamental_score: fundamental,
       social_score: social,
