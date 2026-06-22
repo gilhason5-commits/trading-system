@@ -11,18 +11,24 @@ import type { RunContext } from "./context.ts";
 // market hours) then acts the moment a thesis crosses its bar.
 
 export const INTEREST_CONVICTION = 60; // start building once mildly convincing
-export const BUY_BAR = 70; // long-thesis strength needed to buy
+export const BUY_BAR = 80; // long-thesis strength needed to buy (high bar — few, strong names)
 export const EXIT_BAR = 60; // exit-thesis strength needed to sell (soft exit)
 const MAX_RESEARCH = 6; // independent web/X research calls per run (cost cap)
 const MAX_STEPS = 30;
+const FRESH_MENTION_DAYS = 2; // a buy needs a mention within this many days (no stale single-mention buys)
 
 const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
+
+function daysSince(date: string, today: string): number {
+  return Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${date}T00:00:00Z`)) / 86_400_000);
+}
 
 function buildLongStrength(
   t: TrackedRecommendation,
   days: number,
   corro: number,
   bearishToday: number,
+  staleDays: number,
 ): { strength: number; allAngles: boolean } {
   const conviction = t.conviction ?? 0;
   const tech = t.technical_score ?? 0;
@@ -33,6 +39,9 @@ function buildLongStrength(
   let s = conviction + corro + daysBonus - bearishToday * 6;
   // Only an all-angles name may cross the buy bar; a weak leg keeps it "building".
   if (!allAngles) s = Math.min(s, BUY_BAR - 5);
+  // A name with no fresh mention in the last few days can keep building but isn't
+  // "ready" — never buy on a single stale mention from days ago.
+  if (staleDays > FRESH_MENTION_DAYS) s = Math.min(s, BUY_BAR - 1);
   return { strength: clamp(s), allAngles };
 }
 
@@ -116,7 +125,8 @@ export async function runThesisStage(ctx: RunContext): Promise<void> {
       });
     }
 
-    const { strength } = buildLongStrength(t, days, corro, bearishToday);
+    const staleDays = daysSince(t.last_seen_date, today);
+    const { strength } = buildLongStrength(t, days, corro, bearishToday, staleDays);
     const dropped = (t.conviction ?? 0) < MIN_CONVICTION;
     await ctx.repo.upsertPaperThesis({
       ticker: t.ticker,

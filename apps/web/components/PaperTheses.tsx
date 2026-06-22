@@ -3,9 +3,10 @@
 import { useState } from "react";
 import type { ThesisView } from "@/lib/paperPortfolio";
 import { ThesisFlow } from "@/components/PaperTradeLog";
+import { TradingViewChart } from "@/components/TradingViewChart";
 
 // Buy bar (mirror of BUY_BAR in core's thesis stage) for the progress display.
-const BUY_BAR = 70;
+const BUY_BAR = 80;
 
 const PLATFORM_LABEL: Record<string, string> = {
   x: "X", youtube: "יוטיוב", tiktok: "טיקטוק", instagram: "אינסטגרם", rss: "RSS",
@@ -64,6 +65,12 @@ export function PaperTheses({ theses }: { theses: ThesisView[] }) {
             <p className="mb-3 text-sm text-[var(--muted)]">
               עוצמה {open.strength}/{BUY_BAR} · {open.days} ימי בנייה
               {open.conviction != null ? ` · קונביקשן ${open.conviction}%` : ""}. כשהעוצמה תעבור את הסף — קנייה אוטומטית.
+            </p>
+
+            <TradingViewChart symbol={open.ticker} />
+            <p className="mb-3 mt-2 text-xs text-[var(--muted)]">
+              אינדיקטורים בגרף: <b>SMA50/200</b> (מגמה ותמיכה) · <b>RSI</b> (קנוי/מכור-יתר) · <b>MACD</b> (מומנטום).
+              הקריאה הטכנית המילולית — ואם היא <b>מאשרת</b> או <b>מחלישה</b> את התזה — בצעד "ניתוח טכני" בתרשים הזרימה למטה.
             </p>
 
             {open.manipulation && (
