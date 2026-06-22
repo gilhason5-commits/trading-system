@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import type { PaperTrade, ThesisStep, TradeDossier } from "@trading/core";
 import { TradingViewChart } from "@/components/TradingViewChart";
 
@@ -38,36 +38,40 @@ export function PaperTradeLog({ trades }: { trades: PaperTrade[] }) {
         <table className="w-full text-sm">
           <thead className="bg-[var(--surface)] text-[var(--muted)]">
             <tr>
-              {["תאריך", "פעולה", "טיקר", "כמות", "מחיר", "שווי", "Conviction", "סיבה", ""].map((h) => (
-                <th key={h} className="whitespace-nowrap px-3 py-2 text-right font-medium">{h}</th>
+              {["תאריך", "פעולה", "טיקר", "כמות", "מחיר", "שווי", "Conviction", ""].map((h, i) => (
+                <th key={i} className="whitespace-nowrap px-3 py-2 text-right font-medium">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {trades.map((t) => (
-              <tr
-                key={t.id}
-                onClick={() => setOpen(t)}
-                className="cursor-pointer border-t border-[var(--border)] align-top transition-colors hover:bg-[var(--surface)]"
-              >
-                <td className="whitespace-nowrap px-3 py-2 text-[var(--muted)]">{t.date}</td>
-                <td className="px-3 py-2">
-                  <span
-                    className={`rounded px-2 py-0.5 text-xs font-semibold ${
-                      t.action === "buy" ? "bg-[var(--pos)] text-black" : "bg-[var(--neg)] text-white"
-                    }`}
-                  >
-                    {t.action === "buy" ? "קנייה" : "מכירה"}
-                  </span>
-                </td>
-                <td className="px-3 py-2 font-semibold">{t.ticker}</td>
-                <td className="px-3 py-2">{t.qty}</td>
-                <td className="whitespace-nowrap px-3 py-2">{t.price.toLocaleString()} {t.currency}</td>
-                <td className="whitespace-nowrap px-3 py-2">{fmtUsd(t.value_usd)}</td>
-                <td className="px-3 py-2">{t.conviction != null ? `${t.conviction}%` : "—"}</td>
-                <td className="max-w-md px-3 py-2 text-[var(--muted)]">{t.reason}</td>
-                <td className="whitespace-nowrap px-3 py-2 text-[var(--pos)]">פירוט ←</td>
-              </tr>
+              <Fragment key={t.id}>
+                <tr
+                  onClick={() => setOpen(t)}
+                  className="cursor-pointer border-t border-[var(--border)] transition-colors hover:bg-[var(--surface)]"
+                >
+                  <td className="whitespace-nowrap px-3 pt-2 text-[var(--muted)]">{t.date}</td>
+                  <td className="px-3 pt-2">
+                    <span
+                      className={`rounded px-2 py-0.5 text-xs font-semibold ${
+                        t.action === "buy" ? "bg-[var(--pos)] text-black" : "bg-[var(--neg)] text-white"
+                      }`}
+                    >
+                      {t.action === "buy" ? "קנייה" : "מכירה"}
+                    </span>
+                  </td>
+                  <td className="px-3 pt-2 font-semibold">{t.ticker}</td>
+                  <td className="px-3 pt-2">{t.qty}</td>
+                  <td className="whitespace-nowrap px-3 pt-2">{t.price.toLocaleString()} {t.currency}</td>
+                  <td className="whitespace-nowrap px-3 pt-2">{fmtUsd(t.value_usd)}</td>
+                  <td className="px-3 pt-2">{t.conviction != null ? `${t.conviction}%` : "—"}</td>
+                  <td className="whitespace-nowrap px-3 pt-2 text-[var(--pos)]">פירוט ←</td>
+                </tr>
+                {/* Reason spans the full card width on its own row, below the dry details. */}
+                <tr onClick={() => setOpen(t)} className="cursor-pointer transition-colors hover:bg-[var(--surface)]">
+                  <td colSpan={8} className="px-3 pb-3 pt-1 text-sm leading-relaxed text-[var(--muted)]">{t.reason}</td>
+                </tr>
+              </Fragment>
             ))}
           </tbody>
         </table>
