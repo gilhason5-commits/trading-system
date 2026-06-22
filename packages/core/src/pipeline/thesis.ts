@@ -83,14 +83,15 @@ export async function runThesisStage(ctx: RunContext): Promise<void> {
     if (researchBudget > 0) {
       researchBudget -= 1;
       const r = await researchThesisOnline(t.ticker, "long");
-      corro = r.verdict === "confirm" ? 12 : r.verdict === "refute" ? -20 : 0;
+      corro = r.ok ? (r.verdict === "confirm" ? 12 : r.verdict === "refute" ? -20 : 0) : 0;
       steps.push({
         date: today,
         stage: "מחקר עצמאי (אינטרנט + X)",
-        detail:
-          (r.verdict === "confirm" ? "אימות: " : r.verdict === "refute" ? "סתירה/חשד מניפולציה: " : "ניטרלי: ") +
-          (r.note || "אין ממצא מובהק") +
-          (r.found.length ? ` — ${r.found.join("; ")}` : ""),
+        detail: !r.ok
+          ? `⚠️ החיפוש לא רץ (${r.note || "לא זמין"}) — התזה נבנית ללא אימות חיצוני`
+          : (r.verdict === "confirm" ? "אימות: " : r.verdict === "refute" ? "סתירה/חשד מניפולציה: " : "ניטרלי: ") +
+            (r.note || "אין ממצא מובהק") +
+            (r.found.length ? ` — ${r.found.join("; ")}` : ""),
         weight: corro,
       });
     }
@@ -151,12 +152,14 @@ export async function runThesisStage(ctx: RunContext): Promise<void> {
     if (s >= 20 && researchBudget > 0) {
       researchBudget -= 1;
       const r = await researchThesisOnline(p.ticker, "exit");
-      const w = r.verdict === "confirm" ? 20 : r.verdict === "refute" ? -15 : 0;
+      const w = r.ok ? (r.verdict === "confirm" ? 20 : r.verdict === "refute" ? -15 : 0) : 0;
       s += w;
       steps.push({
         date: today,
         stage: "מחקר עצמאי (אינטרנט + X)",
-        detail: (r.verdict === "confirm" ? "מאשר הרעה: " : r.verdict === "refute" ? "התזה עדיין בריאה: " : "ניטרלי: ") + (r.note || "אין ממצא מובהק"),
+        detail: !r.ok
+          ? `⚠️ החיפוש לא רץ (${r.note || "לא זמין"})`
+          : (r.verdict === "confirm" ? "מאשר הרעה: " : r.verdict === "refute" ? "התזה עדיין בריאה: " : "ניטרלי: ") + (r.note || "אין ממצא מובהק"),
         weight: w,
       });
     }

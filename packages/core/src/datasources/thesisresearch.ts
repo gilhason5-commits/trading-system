@@ -1,31 +1,42 @@
 import { parseJsonResponse } from "../claude/client.ts";
 import { getEnv } from "../env.ts";
 
-// Independent thesis research via Grok live search (web + X). After the system
-// recommends a name, the paper trader goes and looks for its OWN corroboration:
-// does fresh web/X chatter confirm the bullish thesis (long) or show deterioration
-// (exit)? Manipulation-aware. Best-effort: returns a neutral verdict if Grok is
-// unavailable, so thesis-building still proceeds on the system's own signals.
+// Independent thesis research via Grok's Agent Tools (web + X search) on the
+// /v1/responses endpoint. After the system recommends a name, the paper trader
+// goes and looks for its OWN corroboration: does fresh web/X chatter confirm the
+// bullish thesis (long) or show deterioration (exit)? Manipulation-aware. If the
+// search is unavailable it returns ok:false (a *visible* failure) rather than a
+// silent neutral, so thesis-building proceeds on the system's own signals while
+// the flow chart still shows the research didn't actually run.
+//
+// NOTE: xAI's old Live Search (`search_parameters` on /v1/chat/completions) was
+// deprecated (HTTP 410) — this uses the Agent Tools API instead.
+
+const RESPONSES_URL = "https://api.x.ai/v1/responses";
+const SEARCH_MODEL = "grok-4.3"; // tools-capable model for web/x search
 
 export type ThesisVerdict = "confirm" | "neutral" | "refute";
 
 export interface ThesisResearch {
+  /** false = the search itself failed (don't read the verdict as a real "neutral"). */
+  ok: boolean;
   verdict: ThesisVerdict;
-  /** One-line Hebrew note on what the search found. */
+  /** One-line Hebrew note on what the search found (or why it failed). */
   note: string;
   /** A few concrete corroborating/contradicting findings. */
   found: string[];
 }
 
-const NEUTRAL: ThesisResearch = { verdict: "neutral", note: "", found: [] };
+const fail = (note: string): ThesisResearch => ({ ok: false, verdict: "neutral", note, found: [] });
 
-const SYSTEM = "You are an equity analyst verifying a thesis with live web + X search. Output ONLY a valid JSON object, no prose, no code fences.";
+const SYSTEM =
+  "You are an equity analyst verifying a thesis with live web + X search. Use the search tools, then output ONLY a valid JSON object, no prose, no code fences.";
 
 function userPrompt(ticker: string, direction: "long" | "exit"): string {
   const goal =
     direction === "long"
-      ? `Does fresh web + X chatter CONFIRM a bullish/buy thesis on $${ticker}? Watch for coordinated pumps / low-float manipulation — those do NOT count as confirmation.`
-      : `Does fresh web + X chatter show DETERIORATION / a bearish turn for $${ticker} (bad news, broken thesis, negative sentiment)?`;
+      ? `Does fresh web + X chatter from the last 3 days CONFIRM a bullish/buy thesis on $${ticker}? Watch for coordinated pumps / low-float manipulation — those do NOT count as confirmation.`
+      : `Does fresh web + X chatter from the last 3 days show DETERIORATION / a bearish turn for $${ticker} (bad news, broken thesis, negative sentiment)?`;
   return [
     goal,
     'Return JSON: {"verdict":"confirm"|"neutral"|"refute",',
@@ -37,53 +48,55 @@ function userPrompt(ticker: string, direction: "long" | "exit"): string {
   ].join("\n");
 }
 
+/** Pull the assistant's final output_text out of a /v1/responses payload. */
+function extractText(j: unknown): string {
+  const out = (j as { output?: Array<{ type?: string; content?: Array<{ type?: string; text?: string }> }> })?.output;
+  if (!Array.isArray(out)) return "";
+  for (const item of out) {
+    if (item?.type === "message" && Array.isArray(item.content)) {
+      for (const c of item.content) {
+        if (c?.type === "output_text" && typeof c.text === "string") return c.text;
+      }
+    }
+  }
+  return "";
+}
+
 export async function researchThesisOnline(
   ticker: string,
   direction: "long" | "exit",
 ): Promise<ThesisResearch> {
-  const env = getEnv();
-  const apiKey = env.XAI_API_KEY;
-  if (!apiKey) return NEUTRAL;
-  const model = env.XAI_MODEL ?? "grok-4.20-0309-non-reasoning";
-
-  const today = new Date();
-  const from = new Date(today);
-  from.setUTCDate(from.getUTCDate() - 3);
+  const apiKey = getEnv().XAI_API_KEY;
+  if (!apiKey) return fail("מפתח XAI חסר");
 
   try {
-    const res = await fetch("https://api.x.ai/v1/chat/completions", {
+    const res = await fetch(RESPONSES_URL, {
       method: "POST",
       headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
       body: JSON.stringify({
-        model,
-        max_tokens: 1024,
-        search_parameters: {
-          mode: "on",
-          return_citations: false,
-          from_date: from.toISOString().slice(0, 10),
-          to_date: today.toISOString().slice(0, 10),
-          max_search_results: 15,
-          sources: [{ type: "news" }, { type: "web" }, { type: "x" }],
-        },
-        messages: [
+        model: SEARCH_MODEL,
+        stream: false,
+        input: [
           { role: "system", content: SYSTEM },
           { role: "user", content: userPrompt(ticker, direction) },
         ],
+        tools: [{ type: "web_search" }, { type: "x_search" }],
       }),
     });
-    if (!res.ok) return NEUTRAL;
-    const j = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const text = j.choices?.[0]?.message?.content ?? "";
-    if (!text) return NEUTRAL;
+    if (!res.ok) return fail(`xAI ${res.status}`);
+    const j = await res.json();
+    const text = extractText(j);
+    if (!text) return fail("אין תשובה מהחיפוש");
     const o = parseJsonResponse<Partial<ThesisResearch>>(text);
     const verdict: ThesisVerdict =
       o.verdict === "confirm" || o.verdict === "refute" ? o.verdict : "neutral";
     return {
+      ok: true,
       verdict,
       note: typeof o.note === "string" ? o.note.trim() : "",
       found: Array.isArray(o.found) ? o.found.filter((s) => typeof s === "string").slice(0, 5) : [],
     };
-  } catch {
-    return NEUTRAL;
+  } catch (err) {
+    return fail(`שגיאת רשת: ${(err as Error).message}`);
   }
 }
