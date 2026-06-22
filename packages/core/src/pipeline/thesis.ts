@@ -1,3 +1,4 @@
+import { fetchAnalystData } from "../datasources/analysts.ts";
 import { researchThesisOnline } from "../datasources/thesisresearch.ts";
 import { MIN_CONVICTION } from "../scoring.ts";
 import type { PaperThesis, ThesisStep, TrackedRecommendation } from "../types.ts";
@@ -39,6 +40,7 @@ function buildLongStrength(
   t: TrackedRecommendation,
   corro: number,
   bearishToday: number,
+  analystWeight: number,
 ): { strength: number; allAngles: boolean } {
   const conviction = t.conviction ?? 0;
   const tech = t.technical_score ?? 0;
@@ -46,7 +48,7 @@ function buildLongStrength(
   const soc = t.social_score ?? 0;
   const allAngles = tech >= 60 && fund >= 60 && soc >= 60;
   const reinforceBonus = Math.min(15, t.reinforce_count * 5); // reward real repeated mentions
-  let s = conviction + corro + reinforceBonus - bearishToday * 6;
+  let s = conviction + corro + reinforceBonus + analystWeight - bearishToday * 6;
   if (!allAngles) s = Math.min(s, BUY_BAR - 5); // a weak leg keeps it "building"
   return { strength: clamp(s), allAngles };
 }
@@ -140,7 +142,27 @@ export async function runThesisStage(ctx: RunContext): Promise<void> {
       });
     }
 
-    const { strength } = buildLongStrength(t, corro, bearishToday);
+    // Analyst valuation as a negative reinforcement (NOT a hard block): if the
+    // price has run above consensus / above the highest target, fade the thesis —
+    // there's little/no upside left even per the bulls. Best-effort.
+    let analystWeight = 0;
+    try {
+      const a = await fetchAnalystData(t.ticker);
+      const px = a.current;
+      if (px && a.target_high && px > a.target_high) {
+        analystWeight = -15;
+        steps.push({ date: today, stage: "הערכת שווי (אנליסטים)", detail: `מחיר ~$${Math.round(px)} מעל היעד הגבוה $${Math.round(a.target_high)} — אף אנליסט לא רואה upside`, weight: analystWeight });
+      } else if (px && a.target_mean && px > a.target_mean) {
+        analystWeight = -7;
+        steps.push({ date: today, stage: "הערכת שווי (אנליסטים)", detail: `מחיר ~$${Math.round(px)} מעל יעד הקונצנזוס $${Math.round(a.target_mean)} (יעד גבוה $${Math.round(a.target_high ?? 0)}) — upside מוגבל`, weight: analystWeight });
+      } else if (px && a.target_mean) {
+        steps.push({ date: today, stage: "הערכת שווי (אנליסטים)", detail: `מחיר ~$${Math.round(px)} מתחת ליעד הקונצנזוס $${Math.round(a.target_mean)} — יש upside`, weight: 0 });
+      }
+    } catch {
+      // no analyst data → no valuation adjustment
+    }
+
+    const { strength } = buildLongStrength(t, corro, bearishToday, analystWeight);
 
     // Improvement tracking → release after STALE_DROP_DAYS trading days with no rise.
     const improved = isNew || strength > (existing?.strength ?? 0);
