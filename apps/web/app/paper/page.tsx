@@ -27,133 +27,142 @@ export default async function PaperPage() {
         </p>
       </section>
 
-      {!opened ? (
-        <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-8 text-center text-sm text-[var(--muted)]">
+      {!opened && (
+        <div className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4 text-center text-sm text-[var(--muted)]">
           התיק האוטונומי ייפתח עם {formatUsd(10000)} מזומן ויתחיל לסחור בפתיחת המסחר הבא בוול-סטריט.
+          בינתיים — למטה אפשר לראות את המטרות והתזות שאני בונה כבר עכשיו.
         </div>
-      ) : (
-        <>
-          <section className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <Stat label="שווי כולל (מזומן + אחזקות)" value={formatUsd(totalValueUsd)} />
-            <Stat label="מזומן פנוי" value={formatUsd(cash)} />
-            <Stat
-              label="תשואה מתחילת הדרך"
-              value={formatUsd(totalReturnUsd)}
-              sub={formatPct(totalReturnPct)}
-              tone={totalReturnUsd}
-            />
-            <Stat
-              label="רווח/הפסד יומי (אחזקות)"
-              value={formatDual(stats.day_pl)}
-              sub={formatPct(stats.day_pl_pct)}
-              tone={stats.day_pl.usd}
-            />
-          </section>
+      )}
 
-          <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
-            <div className="mb-1 flex items-baseline justify-between">
-              <h2 className="text-lg font-semibold">💡 רעיונות למסחר {marketOpen ? "" : "לפתיחה הבאה"}</h2>
-              <span className="text-xs text-[var(--muted)]">
-                {marketOpen ? "השוק פתוח — מתבצע בזמן אמת" : `השוק ${marketState === "PRE" ? "לפני פתיחה" : marketState === "POST" ? "אחרי נעילה" : "סגור"} — יתבצע בפתיחה`}
-              </span>
-            </div>
-            {!hasIdeas ? (
-              <p className="text-sm text-[var(--muted)]">אין עדיין מספיק דאטה לרעיונות — אני בונה תזות וזה יתעדכן.</p>
-            ) : (
-              <div className="space-y-4">
-                {plannedBuys.length > 0 && (
-                  <div>
-                    <div className="mb-2 text-sm font-semibold pos">קניות מתוכננות ({plannedBuys.length})</div>
-                    <PaperTheses theses={plannedBuys} />
-                  </div>
-                )}
-                {plannedSells.length > 0 && (
-                  <div>
-                    <div className="mb-2 text-sm font-semibold neg">מכירות מתוכננות ({plannedSells.length})</div>
-                    <ul className="space-y-1 text-sm">
-                      {plannedSells.map((s) => (
-                        <li key={s.ticker} className="flex flex-wrap items-center gap-2">
-                          <span className="rounded bg-[var(--neg)] px-2 py-0.5 text-xs font-semibold text-white">מכירה</span>
-                          <span className="font-semibold">{s.ticker}</span>
-                          <span className="text-[var(--muted)]">— {s.reason}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+      {opened && (
+        <section className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <Stat label="שווי כולל (מזומן + אחזקות)" value={formatUsd(totalValueUsd)} />
+          <Stat label="מזומן פנוי" value={formatUsd(cash)} />
+          <Stat
+            label="תשואה מתחילת הדרך"
+            value={formatUsd(totalReturnUsd)}
+            sub={formatPct(totalReturnPct)}
+            tone={totalReturnUsd}
+          />
+          <Stat
+            label="רווח/הפסד יומי (אחזקות)"
+            value={formatDual(stats.day_pl)}
+            sub={formatPct(stats.day_pl_pct)}
+            tone={stats.day_pl.usd}
+          />
+        </section>
+      )}
+
+      {/* Research preview — always visible, incl. before the book opens (from 14:30),
+          so the targets + thinking are auditable before any capital is deployed. */}
+      <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
+        <div className="mb-1 flex items-baseline justify-between">
+          <h2 className="text-lg font-semibold">💡 רעיונות למסחר {marketOpen ? "" : "לפתיחה הבאה"}</h2>
+          <span className="text-xs text-[var(--muted)]">
+            {marketOpen ? "השוק פתוח — מתבצע בזמן אמת" : `השוק ${marketState === "PRE" ? "לפני פתיחה" : marketState === "POST" ? "אחרי נעילה" : "סגור"} — יתבצע בפתיחה`}
+          </span>
+        </div>
+        {!hasIdeas ? (
+          <p className="text-sm text-[var(--muted)]">אין עדיין מספיק דאטה לרעיונות — אני בונה תזות וזה יתעדכן.</p>
+        ) : (
+          <div className="space-y-4">
+            {plannedBuys.length > 0 && (
+              <div>
+                <div className="mb-2 text-sm font-semibold pos">קניות מתוכננות ({plannedBuys.length})</div>
+                <PaperTheses theses={plannedBuys} />
               </div>
             )}
-          </section>
-
-          <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
-            <div className="mb-2 flex items-baseline justify-between">
-              <h2 className="text-lg font-semibold">ביצועים</h2>
-              <span className="text-sm text-[var(--muted)]">
-                {formatUsd(snapshots.at(0)?.total_value_usd ?? 10000)} → {formatUsd(totalValueUsd)}
-              </span>
-            </div>
-            {snapshots.length >= 2 ? (
-              <Sparkline snapshots={snapshots} />
-            ) : (
-              <p className="text-xs text-[var(--muted)]">גרף ההתפתחות יתמלא לאורך הימים (נקודה ליום).</p>
+            {plannedSells.length > 0 && (
+              <div>
+                <div className="mb-2 text-sm font-semibold neg">מכירות מתוכננות ({plannedSells.length})</div>
+                <ul className="space-y-1 text-sm">
+                  {plannedSells.map((s) => (
+                    <li key={s.ticker} className="flex flex-wrap items-center gap-2">
+                      <span className="rounded bg-[var(--neg)] px-2 py-0.5 text-xs font-semibold text-white">מכירה</span>
+                      <span className="font-semibold">{s.ticker}</span>
+                      <span className="text-[var(--muted)]">— {s.reason}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
-          </section>
+          </div>
+        )}
+      </section>
 
-          <section>
-            <h2 className="mb-3 text-lg font-semibold">פוזיציות ({views.length})</h2>
-            {views.length === 0 ? (
-              <p className="text-sm text-[var(--muted)]">אין פוזיציות פתוחות כרגע — כל ההון במזומן ({formatUsd(cash)}).</p>
-            ) : (
-              <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
-                <table className="w-full text-sm">
-                  <thead className="bg-[var(--surface)] text-[var(--muted)]">
-                    <tr>
-                      {["טיקר", "שוק", "כמות", "מחיר כניסה", "מחיר נוכחי", "יומי", "שווי", "רווח/הפסד", "%", "משקל"].map((h) => (
-                        <th key={h} className="whitespace-nowrap px-3 py-2 text-right font-medium">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {views.map((v) => (
-                      <tr key={v.id} className="border-t border-[var(--border)]">
-                        <td className="px-3 py-2 font-semibold">
-                          <a href={`/stock/${encodeURIComponent(v.ticker)}`} className="hover:underline">{v.ticker}</a>
-                        </td>
-                        <td className="px-3 py-2">{v.market}</td>
-                        <td className="px-3 py-2">{v.qty}</td>
-                        <td className="px-3 py-2">{v.avg_cost.toLocaleString()} {v.currency}</td>
-                        <td className="px-3 py-2">{v.price_native.toLocaleString()} {v.currency}</td>
-                        <td className="px-3 py-2"><Pct value={v.day_change_pct} /></td>
-                        <td className="px-3 py-2">{formatDual(v.market_value)}</td>
-                        <td className="px-3 py-2"><PnL d={v.unrealized_pl} /></td>
-                        <td className="px-3 py-2"><Pct value={v.unrealized_pl_pct} /></td>
-                        <td className="px-3 py-2">{v.weight_pct.toFixed(1)}%</td>
-                      </tr>
+      {opened && (
+        <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
+          <div className="mb-2 flex items-baseline justify-between">
+            <h2 className="text-lg font-semibold">ביצועים</h2>
+            <span className="text-sm text-[var(--muted)]">
+              {formatUsd(snapshots.at(0)?.total_value_usd ?? 10000)} → {formatUsd(totalValueUsd)}
+            </span>
+          </div>
+          {snapshots.length >= 2 ? (
+            <Sparkline snapshots={snapshots} />
+          ) : (
+            <p className="text-xs text-[var(--muted)]">גרף ההתפתחות יתמלא לאורך הימים (נקודה ליום).</p>
+          )}
+        </section>
+      )}
+
+      {opened && (
+        <section>
+          <h2 className="mb-3 text-lg font-semibold">פוזיציות ({views.length})</h2>
+          {views.length === 0 ? (
+            <p className="text-sm text-[var(--muted)]">אין פוזיציות פתוחות כרגע — כל ההון במזומן ({formatUsd(cash)}).</p>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border border-[var(--border)]">
+              <table className="w-full text-sm">
+                <thead className="bg-[var(--surface)] text-[var(--muted)]">
+                  <tr>
+                    {["טיקר", "שוק", "כמות", "מחיר כניסה", "מחיר נוכחי", "יומי", "שווי", "רווח/הפסד", "%", "משקל"].map((h) => (
+                      <th key={h} className="whitespace-nowrap px-3 py-2 text-right font-medium">{h}</th>
                     ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
+                  </tr>
+                </thead>
+                <tbody>
+                  {views.map((v) => (
+                    <tr key={v.id} className="border-t border-[var(--border)]">
+                      <td className="px-3 py-2 font-semibold">
+                        <a href={`/stock/${encodeURIComponent(v.ticker)}`} className="hover:underline">{v.ticker}</a>
+                      </td>
+                      <td className="px-3 py-2">{v.market}</td>
+                      <td className="px-3 py-2">{v.qty}</td>
+                      <td className="px-3 py-2">{v.avg_cost.toLocaleString()} {v.currency}</td>
+                      <td className="px-3 py-2">{v.price_native.toLocaleString()} {v.currency}</td>
+                      <td className="px-3 py-2"><Pct value={v.day_change_pct} /></td>
+                      <td className="px-3 py-2">{formatDual(v.market_value)}</td>
+                      <td className="px-3 py-2"><PnL d={v.unrealized_pl} /></td>
+                      <td className="px-3 py-2"><Pct value={v.unrealized_pl_pct} /></td>
+                      <td className="px-3 py-2">{v.weight_pct.toFixed(1)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
 
-          <section>
-            <h2 className="mb-1 text-lg font-semibold">🧩 תזות בבנייה — מחקר מצטבר לפני קנייה</h2>
-            <p className="mb-3 text-xs text-[var(--muted)]">
-              מניות שקיבלתי עליהן המלצה ואני בודק לעומק לאורך ימים (חיפוש עצמאי באינטרנט וב-X, אזכורים, גרף).
-              כשהעוצמה עוברת את הסף — קנייה אוטומטית. לחץ לתרשים הזרימה של המחקר.
-            </p>
-            <PaperTheses theses={buildingTheses} />
-          </section>
+      <section>
+        <h2 className="mb-1 text-lg font-semibold">🧩 תזות בבנייה — מחקר מצטבר לפני קנייה</h2>
+        <p className="mb-3 text-xs text-[var(--muted)]">
+          מניות שקיבלתי עליהן המלצה ואני בודק לעומק לאורך ימים (חיפוש עצמאי באינטרנט וב-X, אזכורים, גרף).
+          כשהעוצמה עוברת את הסף — קנייה אוטומטית. לחץ לתרשים הזרימה של המחקר ולמקורות.
+        </p>
+        <PaperTheses theses={buildingTheses} />
+      </section>
 
-          <section>
-            <h2 className="mb-1 text-lg font-semibold">📒 יומן פעולות — מה עשיתי ולמה</h2>
-            <p className="mb-3 text-xs text-[var(--muted)]">
-              כל קנייה/מכירה אוטונומית, החדשות למעלה. לחץ על שורה לתהליך החשיבה המלא — גרף, דירוגים, תחזיות אנליסטים,
-              תוכנית יציאה וציטוטים מהרשת. תן לי משוב על השיטה ואשנה בהתאם.
-            </p>
-            <PaperTradeLog trades={trades} />
-          </section>
-        </>
+      {opened && (
+        <section>
+          <h2 className="mb-1 text-lg font-semibold">📒 יומן פעולות — מה עשיתי ולמה</h2>
+          <p className="mb-3 text-xs text-[var(--muted)]">
+            כל קנייה/מכירה אוטונומית, החדשות למעלה. לחץ על שורה לתהליך החשיבה המלא — גרף, דירוגים, תחזיות אנליסטים,
+            תוכנית יציאה וציטוטים מהרשת. תן לי משוב על השיטה ואשנה בהתאם.
+          </p>
+          <PaperTradeLog trades={trades} />
+        </section>
       )}
     </div>
   );
