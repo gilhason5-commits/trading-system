@@ -142,19 +142,26 @@ export async function runThesisStage(ctx: RunContext): Promise<void> {
       });
     }
 
-    // Analyst valuation as a negative reinforcement (NOT a hard block): if the
-    // price has run above consensus / above the highest target, fade the thesis —
-    // there's little/no upside left even per the bulls. Best-effort.
+    // Analyst valuation as a negative reinforcement (NOT a hard block): the further
+    // the price has run above the consensus target, the more we fade the thesis —
+    // less upside left, more risk. An extra hit if it's above even the highest
+    // (freshest-bull) target. Best-effort.
     let analystWeight = 0;
     try {
       const a = await fetchAnalystData(t.ticker);
       const px = a.current;
-      if (px && a.target_high && px > a.target_high) {
-        analystWeight = -15;
-        steps.push({ date: today, stage: "הערכת שווי (אנליסטים)", detail: `מחיר ~$${Math.round(px)} מעל היעד הגבוה $${Math.round(a.target_high)} — אף אנליסט לא רואה upside`, weight: analystWeight });
-      } else if (px && a.target_mean && px > a.target_mean) {
-        analystWeight = -7;
-        steps.push({ date: today, stage: "הערכת שווי (אנליסטים)", detail: `מחיר ~$${Math.round(px)} מעל יעד הקונצנזוס $${Math.round(a.target_mean)} (יעד גבוה $${Math.round(a.target_high ?? 0)}) — upside מוגבל`, weight: analystWeight });
+      if (px && a.target_mean && px > a.target_mean) {
+        const overMeanPct = (px / a.target_mean - 1) * 100;
+        const aboveHigh = !!(a.target_high && px > a.target_high);
+        analystWeight = Math.max(-25, -Math.min(20, Math.round(overMeanPct * 0.5)) - (aboveHigh ? 5 : 0));
+        steps.push({
+          date: today,
+          stage: "הערכת שווי (אנליסטים)",
+          detail: aboveHigh
+            ? `מחיר ~$${Math.round(px)} מעל היעד הגבוה $${Math.round(a.target_high!)} (+${overMeanPct.toFixed(0)}% מעל הקונצנזוס) — אף אנליסט לא רואה upside`
+            : `מחיר ~$${Math.round(px)} כ-${overMeanPct.toFixed(0)}% מעל יעד הקונצנזוס $${Math.round(a.target_mean)} (יעד גבוה $${Math.round(a.target_high ?? 0)}) — upside מוגבל`,
+          weight: analystWeight,
+        });
       } else if (px && a.target_mean) {
         steps.push({ date: today, stage: "הערכת שווי (אנליסטים)", detail: `מחיר ~$${Math.round(px)} מתחת ליעד הקונצנזוס $${Math.round(a.target_mean)} — יש upside`, weight: 0 });
       }
