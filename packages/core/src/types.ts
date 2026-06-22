@@ -145,6 +145,8 @@ export interface PaperThesis {
   days: number;
   first_date: string;
   steps: ThesisStep[];
+  /** Consecutive trading days with no strength improvement (drives auto-release). */
+  stale_days?: number;
   updated_at: string;
   created_at: string;
 }

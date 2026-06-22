@@ -11,37 +11,43 @@ import type { RunContext } from "./context.ts";
 // market hours) then acts the moment a thesis crosses its bar.
 
 export const INTEREST_CONVICTION = 60; // start building once mildly convincing
-export const BUY_BAR = 80; // long-thesis strength needed to buy (high bar — few, strong names)
+export const BUY_BAR = 70; // long-thesis strength needed to buy
 export const EXIT_BAR = 60; // exit-thesis strength needed to sell (soft exit)
-const MAX_RESEARCH = 6; // independent web/X research calls per run (cost cap)
-const MAX_STEPS = 30;
-const FRESH_MENTION_DAYS = 2; // a buy needs a mention within this many days (no stale single-mention buys)
+const MAX_RESEARCH = 25; // re-research every active thesis daily (web fundamental + check)
+const MAX_STEPS = 40;
+const STALE_DROP_DAYS = 2; // release a building thesis after this many trading days w/o improvement
 
 const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
 
-function daysSince(date: string, today: string): number {
-  return Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${date}T00:00:00Z`)) / 86_400_000);
+/** US trading day (Mon–Fri), so Fri→Mon count as consecutive (weekend skipped). */
+function isTradingDay(date: string): boolean {
+  const d = new Date(`${date}T12:00:00Z`).getUTCDay();
+  return d >= 1 && d <= 5;
 }
 
+/** Most recent step.detail for a stage, to detect day-over-day change. */
+function lastDetail(steps: ThesisStep[], stage: string): string | null {
+  for (let i = steps.length - 1; i >= 0; i--) if (steps[i]!.stage === stage) return steps[i]!.detail;
+  return null;
+}
+
+// Strength = current conviction, adjusted by independent research (corro) and real
+// repeated mentions — NOT by mere time alive (no day bonus, which inflated minor
+// names). Negative mentions subtract. Staleness is handled by the lifecycle (drop
+// after STALE_DROP_DAYS without improvement), not a continuous decay.
 function buildLongStrength(
   t: TrackedRecommendation,
-  days: number,
   corro: number,
   bearishToday: number,
-  staleDays: number,
 ): { strength: number; allAngles: boolean } {
   const conviction = t.conviction ?? 0;
   const tech = t.technical_score ?? 0;
   const fund = t.fundamental_score ?? 0;
   const soc = t.social_score ?? 0;
   const allAngles = tech >= 60 && fund >= 60 && soc >= 60;
-  const daysBonus = Math.min(15, (days - 1) * 5); // conviction compounds as it holds up over days
-  let s = conviction + corro + daysBonus - bearishToday * 6;
-  // Only an all-angles name may cross the buy bar; a weak leg keeps it "building".
-  if (!allAngles) s = Math.min(s, BUY_BAR - 5);
-  // A name with no fresh mention in the last few days can keep building but isn't
-  // "ready" — never buy on a single stale mention from days ago.
-  if (staleDays > FRESH_MENTION_DAYS) s = Math.min(s, BUY_BAR - 1);
+  const reinforceBonus = Math.min(15, t.reinforce_count * 5); // reward real repeated mentions
+  let s = conviction + corro + reinforceBonus - bearishToday * 6;
+  if (!allAngles) s = Math.min(s, BUY_BAR - 5); // a weak leg keeps it "building"
   return { strength: clamp(s), allAngles };
 }
 
@@ -72,32 +78,51 @@ export async function runThesisStage(ctx: RunContext): Promise<void> {
     .sort((a, b) => (b.conviction ?? 0) - (a.conviction ?? 0));
 
   let researchBudget = MAX_RESEARCH;
+  const tradingDay = isTradingDay(today);
   for (const t of candidates) {
     const key = t.ticker.toUpperCase();
     const existing = thesisByKey.get(`${key}:long`);
     if (existing?.status === "acted") continue; // already bought — managed as a holding now
-    const days = existing ? existing.days + (existing.updated_at.slice(0, 10) !== today ? 1 : 0) : 1;
-
+    const isNew = !existing;
+    const newDay = !existing || existing.updated_at.slice(0, 10) !== today;
+    const days = existing ? existing.days + (newDay ? 1 : 0) : 1;
     const steps: ThesisStep[] = existing ? [...existing.steps] : [];
-    steps.push({
-      date: today,
-      stage: "המלצת המערכת",
-      detail: `קונביקשן ${t.conviction}% · ט ${t.technical_score ?? "—"}/פ ${t.fundamental_score ?? "—"}/ח ${t.social_score ?? "—"}` +
-        (t.reinforce_count ? ` · חוזק ×${t.reinforce_count}` : ""),
-      weight: Math.round((t.conviction ?? 0) - 50),
-    });
 
-    // Technical read of the chart (RSI/MACD/SMA/trend) that validates the thesis.
-    if (t.technical_summary) {
+    const bullToday = bull.get(key) ?? 0;
+    const bearishToday = bear.get(key) ?? 0;
+    const mentionedToday = bullToday > 0 || bearishToday > 0;
+
+    // System recommendation — only on a fresh mention (or day 1), not repeated daily.
+    if (isNew || mentionedToday) {
       steps.push({
         date: today,
-        stage: "ניתוח טכני",
-        detail: t.technical_summary,
-        weight: Math.round((t.technical_score ?? 50) - 50),
+        stage: "המלצת המערכת",
+        detail: `קונביקשן ${t.conviction}% · ט ${t.technical_score ?? "—"}/פ ${t.fundamental_score ?? "—"}/ח ${t.social_score ?? "—"}` +
+          (t.reinforce_count ? ` · חוזק ×${t.reinforce_count}` : ""),
+        weight: Math.round((t.conviction ?? 0) - 50),
+      });
+    }
+    if (mentionedToday) {
+      steps.push({
+        date: today,
+        stage: "אזכורים היום",
+        detail: `חיוביים ${bullToday} · שליליים ${bearishToday}`,
+        weight: bullToday * 2 - bearishToday * 6,
       });
     }
 
-    // Independent verification (top candidates only, to cap cost).
+    // Daily technical re-check on the chart — flag whether it improved / worsened.
+    if (t.technical_summary) {
+      const curTech = t.technical_score ?? 50;
+      const prevDetail = lastDetail(steps, "ניתוח טכני");
+      const prevTech = prevDetail ? Number(prevDetail.match(/\(ט (\d+)\)/)?.[1]) : NaN;
+      const change = !Number.isFinite(prevTech) ? "" :
+        curTech > prevTech ? ` · השתפר ${prevTech}→${curTech}` :
+        curTech < prevTech ? ` · הורע ${prevTech}→${curTech}` : " · ללא שינוי";
+      steps.push({ date: today, stage: "ניתוח טכני", detail: t.technical_summary + change, weight: Math.round(curTech - 50) });
+    }
+
+    // Daily independent research (web fundamental/news + X) — confirms or weakens.
     let corro = 0;
     if (researchBudget > 0) {
       researchBudget -= 1;
@@ -107,7 +132,7 @@ export async function runThesisStage(ctx: RunContext): Promise<void> {
         date: today,
         stage: "מחקר עצמאי (אינטרנט + X)",
         detail: !r.ok
-          ? `⚠️ החיפוש לא רץ (${r.note || "לא זמין"}) — התזה נבנית ללא אימות חיצוני`
+          ? `⚠️ החיפוש לא רץ (${r.note || "לא זמין"}) — ללא אימות חיצוני`
           : (r.verdict === "confirm" ? "אימות: " : r.verdict === "refute" ? "סתירה/חשד מניפולציה: " : "ניטרלי: ") +
             (r.note || "אין ממצא מובהק") +
             (r.found.length ? ` — ${r.found.join("; ")}` : ""),
@@ -115,19 +140,19 @@ export async function runThesisStage(ctx: RunContext): Promise<void> {
       });
     }
 
-    const bearishToday = bear.get(key) ?? 0;
-    if ((bull.get(key) ?? 0) > 0 || bearishToday > 0) {
-      steps.push({
-        date: today,
-        stage: "אזכורים היום",
-        detail: `חיוביים ${bull.get(key) ?? 0} · שליליים ${bearishToday}`,
-        weight: (bull.get(key) ?? 0) * 2 - bearishToday * 6,
-      });
-    }
+    const { strength } = buildLongStrength(t, corro, bearishToday);
 
-    const staleDays = daysSince(t.last_seen_date, today);
-    const { strength } = buildLongStrength(t, days, corro, bearishToday, staleDays);
-    const dropped = (t.conviction ?? 0) < MIN_CONVICTION;
+    // Improvement tracking → release after STALE_DROP_DAYS trading days with no rise.
+    const improved = isNew || strength > (existing?.strength ?? 0);
+    let stale = existing?.stale_days ?? 0;
+    if (newDay) stale = improved ? 0 : tradingDay ? stale + 1 : stale;
+
+    const dropByConviction = (t.conviction ?? 0) < MIN_CONVICTION;
+    const dropByStale = stale >= STALE_DROP_DAYS && strength < BUY_BAR; // ready names wait for the poll
+    if (dropByStale) {
+      steps.push({ date: today, stage: "שחרור", detail: `אין שיפור ${stale} ימי מסחר רצופים — משוחרר מהתזות`, weight: -30 });
+    }
+    const dropped = dropByConviction || dropByStale;
     await ctx.repo.upsertPaperThesis({
       ticker: t.ticker,
       direction: "long",
@@ -136,6 +161,7 @@ export async function runThesisStage(ctx: RunContext): Promise<void> {
       days,
       first_date: existing?.first_date ?? today,
       steps: steps.slice(-MAX_STEPS),
+      stale_days: dropped ? 0 : stale,
     });
   }
 

@@ -236,8 +236,11 @@ export async function runAutoTradeStage(ctx: RunContext): Promise<void> {
     if (slots <= 0 || buysLeft <= 0) break;
     const key = th.ticker.toUpperCase();
     const t = convByTicker.get(key);
-    // Final safety: still require all legs ≥ floor at execution time.
-    if (!t || (t.technical_score ?? 0) < f || (t.fundamental_score ?? 0) < f || (t.social_score ?? 0) < f) continue;
+    // Final approval gate: a buy requires the final technical read to confirm
+    // (technical ≥ floor) — and fundamental + social too — at execution time.
+    if (!t) continue;
+    if ((t.technical_score ?? 0) < f) continue; // technical doesn't confirm → no trade
+    if ((t.fundamental_score ?? 0) < f || (t.social_score ?? 0) < f) continue;
     const market = marketByTicker.get(key) ?? "US";
     const ep = await execPrice(t.ticker, market);
     if (!ep) continue;
