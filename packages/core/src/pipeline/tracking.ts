@@ -1,4 +1,4 @@
-import { blendConviction, fundamentalScore, MIN_CONVICTION, socialScore, technicalScore } from "../scoring.ts";
+import { blendConviction, fundamentalScore, MIN_CONVICTION, MIN_SYSTEM_SCORE, socialScore, technicalScore } from "../scoring.ts";
 import type { RunContext } from "./context.ts";
 
 // Recommendation tracking (7-day follow). After the research stage, today's
@@ -15,9 +15,25 @@ function addDays(date: string, days: number): string {
 }
 
 export async function runTrackingStage(ctx: RunContext): Promise<void> {
+  // Only track names that pass research: verified sources, not flagged for
+  // manipulation, and a holistic research score above the floor — so a name the
+  // analysis itself scored as bad never enters tracking / theses / the paper book.
   const recs = (await ctx.repo.listRecommendations(ctx.date)).filter(
-    (r) => (r.verified_sources ?? []).length > 0 && !r.manipulation_flag,
+    (r) =>
+      (r.verified_sources ?? []).length > 0 &&
+      !r.manipulation_flag &&
+      r.system_score >= MIN_SYSTEM_SCORE,
   );
+  // Latest research score per ticker, to also drop already-tracked names that the
+  // research has since judged bad (or flagged as manipulation).
+  const systemByTicker = new Map<string, { date: string; score: number; manipulation: boolean }>();
+  for (const r of await ctx.repo.listRecommendations()) {
+    const k = r.ticker.toUpperCase();
+    const prev = systemByTicker.get(k);
+    if (!prev || r.date > prev.date) {
+      systemByTicker.set(k, { date: r.date, score: r.system_score, manipulation: !!r.manipulation_flag });
+    }
+  }
   const existing = new Map(
     (await ctx.repo.listTracked()).map((t) => [t.ticker.toUpperCase(), t]),
   );
@@ -82,6 +98,14 @@ export async function runTrackingStage(ctx: RunContext): Promise<void> {
     if (t.expires_date < ctx.date) continue;
     const key = t.ticker.toUpperCase();
     const market = marketByTicker.get(key) ?? "US";
+
+    // Drop a name the research now judges bad (low holistic score) or flags as
+    // manipulation, even if its mechanical conviction would otherwise hold up.
+    const sys = systemByTicker.get(key);
+    if (sys && (sys.manipulation || sys.score < MIN_SYSTEM_SCORE)) {
+      await ctx.repo.dismissTicker(t.ticker);
+      continue;
+    }
 
     let technical = 50;
     try {

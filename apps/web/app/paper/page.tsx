@@ -8,7 +8,7 @@ import { getPaperPortfolio } from "@/lib/paperPortfolio";
 export const dynamic = "force-dynamic";
 
 export default async function PaperPage() {
-  const [{ views, stats, usdIls, lastUpdated, account, cash, totalValueUsd, totalReturnUsd, totalReturnPct, trades, buildingTheses, marketState, plannedBuys, plannedSells }, snapshots] =
+  const [{ views, stats, usdIls, lastUpdated, account, cash, totalValueUsd, totalReturnUsd, totalReturnPct, trades, marketState, plannedBuys, plannedSells }, snapshots] =
     await Promise.all([getPaperPortfolio(), getRepository().listPaperSnapshots()]);
 
   const opened = account !== null;
@@ -144,15 +144,6 @@ export default async function PaperPage() {
           )}
         </section>
       )}
-
-      <section>
-        <h2 className="mb-1 text-lg font-semibold">🧩 תזות בבנייה — מחקר מצטבר לפני קנייה</h2>
-        <p className="mb-3 text-xs text-[var(--muted)]">
-          מניות שקיבלתי עליהן המלצה ואני בודק לעומק לאורך ימים (חיפוש עצמאי באינטרנט וב-X, אזכורים, גרף).
-          כשהעוצמה עוברת את הסף — קנייה אוטומטית. לחץ לתרשים הזרימה של המחקר ולמקורות.
-        </p>
-        <PaperTheses theses={buildingTheses} />
-      </section>
 
       {opened && (
         <section>

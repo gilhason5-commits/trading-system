@@ -19,6 +19,16 @@ const W_SOCIAL = 0.3;
  */
 export const MIN_CONVICTION = 60;
 
+/**
+ * Minimum holistic research score (Claude's system_score, 0–100) for a name to be
+ * recommended / tracked. The mechanical conviction blend can be lifted over the
+ * floor by one strong leg (e.g. good technicals) even when the research verdict is
+ * clearly negative — a fundamentally broken name (absurd P/E, no margins). This
+ * floor makes the negative analysis count: if the research itself scored it low,
+ * it's not a recommendation, regardless of the blend.
+ */
+export const MIN_SYSTEM_SCORE = 50;
+
 const clamp = (n: number): number => Math.max(0, Math.min(100, Math.round(n)));
 
 export interface ConvictionScores {

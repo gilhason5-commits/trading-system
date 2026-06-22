@@ -1,4 +1,4 @@
-import { getRepository, MIN_CONVICTION, type Post, type Recommendation, type Signal, type Source } from "@trading/core";
+import { getRepository, MIN_CONVICTION, MIN_SYSTEM_SCORE, type Post, type Recommendation, type Signal, type Source } from "@trading/core";
 import { RecommendationGrid, type RecCard, type TrailItem } from "@/components/RecommendationGrid";
 import { TrackedTable, type TrackedRow, type MentionInfo } from "@/components/TrackedTable";
 import { UpdatedNote } from "@/components/format";
@@ -86,8 +86,15 @@ export default async function LeadsPage() {
   };
 
   // Verified recommendations, latest run only, ranked best → worst, ≥60% only.
+  // Drop manipulation-flagged names and ones the research scored badly — a low
+  // holistic verdict shouldn't surface as a recommendation just because one leg is strong.
   const verifiedAll = recommendations
-    .filter((r) => (r.verified_sources ?? []).length > 0)
+    .filter(
+      (r) =>
+        (r.verified_sources ?? []).length > 0 &&
+        !r.manipulation_flag &&
+        r.system_score >= MIN_SYSTEM_SCORE,
+    )
     .sort((a, b) => quality(b) - quality(a));
   const latestDate = verifiedAll.reduce((m, r) => (r.date > m ? r.date : m), "");
   const verified = verifiedAll.filter((r) => r.date === latestDate && aboveFloor(r.ticker));
