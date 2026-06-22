@@ -7,6 +7,7 @@ import type {
   Lead,
   PaperAccount,
   PaperPosition,
+  PaperReflection,
   PaperThesis,
   PaperTrade,
   PortfolioSnapshot,
@@ -49,6 +50,9 @@ export interface Repository {
     t: Omit<PaperThesis, "id" | "created_at" | "updated_at">,
   ): Promise<PaperThesis>;
   deletePaperThesis(id: string): Promise<void>;
+  // end-of-day self-reflection (learning loop)
+  listPaperReflections(): Promise<PaperReflection[]>;
+  upsertPaperReflection(r: Omit<PaperReflection, "id" | "created_at">): Promise<void>;
 
   // fx + snapshots
   latestFx(): Promise<FxRate | null>;

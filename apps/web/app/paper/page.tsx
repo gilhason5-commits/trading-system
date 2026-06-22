@@ -8,7 +8,7 @@ import { getPaperPortfolio } from "@/lib/paperPortfolio";
 export const dynamic = "force-dynamic";
 
 export default async function PaperPage() {
-  const [{ views, stats, usdIls, lastUpdated, account, cash, totalValueUsd, totalReturnUsd, totalReturnPct, trades, marketState, plannedBuys, plannedSells }, snapshots] =
+  const [{ views, stats, usdIls, lastUpdated, account, cash, totalValueUsd, totalReturnUsd, totalReturnPct, trades, marketState, plannedBuys, plannedSells, reflection }, snapshots] =
     await Promise.all([getPaperPortfolio(), getRepository().listPaperSnapshots()]);
 
   const opened = account !== null;
@@ -153,6 +153,19 @@ export default async function PaperPage() {
             תוכנית יציאה וציטוטים מהרשת. תן לי משוב על השיטה ואשנה בהתאם.
           </p>
           <PaperTradeLog trades={trades} />
+        </section>
+      )}
+
+      {reflection && (
+        <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
+          <div className="mb-1 flex items-baseline justify-between">
+            <h2 className="text-lg font-semibold">🧠 מסקנות ולמידה — סוף יום מסחר</h2>
+            <span className="text-xs text-[var(--muted)]">{reflection.date}</span>
+          </div>
+          <p className="mb-3 text-xs text-[var(--muted)]">
+            מה למדתי מהפוזיציות והעסקאות של היום — נקרא בהכנה ל-14:30 מחר כדי לשפר את הניתוח.
+          </p>
+          <div className="whitespace-pre-wrap text-sm leading-relaxed">{reflection.text}</div>
         </section>
       )}
     </div>

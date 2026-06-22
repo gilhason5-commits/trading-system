@@ -8,6 +8,7 @@ import type {
   Lead,
   PaperAccount,
   PaperPosition,
+  PaperReflection,
   PaperThesis,
   PaperTrade,
   PortfolioSnapshot,
@@ -205,6 +206,20 @@ export class SupabaseRepository implements Repository {
 
   async deletePaperThesis(id: string): Promise<void> {
     const { error } = await this.db.from("paper_theses").delete().eq("id", id);
+    if (error) this.fail(error);
+  }
+
+  async listPaperReflections(): Promise<PaperReflection[]> {
+    const { data, error } = await this.db
+      .from("paper_reflections")
+      .select("*")
+      .order("date", { ascending: false });
+    if (error) this.fail(error);
+    return (data ?? []) as PaperReflection[];
+  }
+
+  async upsertPaperReflection(r: Omit<PaperReflection, "id" | "created_at">): Promise<void> {
+    const { error } = await this.db.from("paper_reflections").upsert(r, { onConflict: "date" });
     if (error) this.fail(error);
   }
 

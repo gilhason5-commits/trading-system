@@ -6,6 +6,7 @@ import type {
   FxRate,
   Lead,
   PaperAccount,
+  PaperReflection,
   PaperThesis,
   PaperTrade,
   PaperPosition,
@@ -42,6 +43,7 @@ export class MockRepository implements Repository {
   private paperTheses: PaperThesis[] = [];
   private tracked: TrackedRecommendation[] = [];
   private scoreObservations: ScoreObservation[] = [];
+  private paperReflections: PaperReflection[] = [];
   private fx: FxRate;
   private snapshots: PortfolioSnapshot[];
   private analyses: Analysis[];
@@ -139,6 +141,15 @@ export class MockRepository implements Repository {
   }
   async deletePaperThesis(id: string) {
     this.paperTheses = this.paperTheses.filter((x) => x.id !== id);
+  }
+
+  async listPaperReflections() {
+    return [...this.paperReflections].sort((a, b) => b.date.localeCompare(a.date));
+  }
+  async upsertPaperReflection(r: Omit<PaperReflection, "id" | "created_at">) {
+    const i = this.paperReflections.findIndex((x) => x.date === r.date);
+    if (i >= 0) this.paperReflections[i] = { ...this.paperReflections[i]!, ...r };
+    else this.paperReflections.push({ ...r, id: nextId("refl"), created_at: now() });
   }
 
   async latestFx() {

@@ -65,6 +65,7 @@ function extractText(j: unknown): string {
 export async function researchThesisOnline(
   ticker: string,
   direction: "long" | "exit",
+  lessons?: string | null,
 ): Promise<ThesisResearch> {
   const apiKey = getEnv().XAI_API_KEY;
   if (!apiKey) return fail("מפתח XAI חסר");
@@ -77,7 +78,7 @@ export async function researchThesisOnline(
         model: SEARCH_MODEL,
         stream: false,
         input: [
-          { role: "system", content: SYSTEM },
+          { role: "system", content: lessons ? `${SYSTEM}\n\nLessons from your own recent trading to keep in mind while judging this: ${lessons}` : SYSTEM },
           { role: "user", content: userPrompt(ticker, direction) },
         ],
         tools: [{ type: "web_search" }, { type: "x_search" }],

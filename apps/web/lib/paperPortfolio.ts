@@ -78,6 +78,8 @@ export interface PaperPortfolioData {
   plannedBuys: ThesisView[];
   /** Sell ideas ready for the next session (holdings that hit an exit rule). */
   plannedSells: PlannedSell[];
+  /** Latest end-of-day self-reflection (lessons), shown under the trade log. */
+  reflection: { date: string; text: string } | null;
 }
 
 /**
@@ -87,7 +89,7 @@ export interface PaperPortfolioData {
  */
 export async function getPaperPortfolio(): Promise<PaperPortfolioData> {
   const repo = getRepository();
-  const [positions, fxRow, cached, account, trades, theses, tracked, marketState, signals, posts, sources, recommendations] =
+  const [positions, fxRow, cached, account, trades, theses, tracked, marketState, signals, posts, sources, recommendations, reflections] =
     await Promise.all([
       repo.listPaperPositions(),
       repo.latestFx(),
@@ -101,6 +103,7 @@ export async function getPaperPortfolio(): Promise<PaperPortfolioData> {
       repo.listPosts(),
       repo.listSources(),
       repo.listRecommendations(),
+      repo.listPaperReflections(),
     ]);
   const heldKeys = new Set(positions.map((p) => p.ticker.toUpperCase()));
   const exitByTicker = new Map(
@@ -196,5 +199,6 @@ export async function getPaperPortfolio(): Promise<PaperPortfolioData> {
     marketState,
     plannedBuys,
     plannedSells,
+    reflection: reflections[0] ? { date: reflections[0].date, text: reflections[0].reflection } : null,
   };
 }

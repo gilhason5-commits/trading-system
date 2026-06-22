@@ -247,6 +247,14 @@ export interface ScoreObservation {
   created_at: string;
 }
 
+/** End-of-day self-reflection of the autonomous paper trader (lessons to improve). */
+export interface PaperReflection {
+  id: string;
+  date: string;
+  reflection: string;
+  created_at: string;
+}
+
 /** A position enriched with live price + P&L, ready for the dashboard. */
 export interface PositionView extends Position {
   price_native: number;

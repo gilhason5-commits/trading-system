@@ -62,6 +62,8 @@ export async function runThesisStage(ctx: RunContext): Promise<void> {
   ]);
   const held = new Set(paper.map((p) => p.ticker.toUpperCase()));
   const thesisByKey = new Map(theses.map((t) => [`${t.ticker.toUpperCase()}:${t.direction}`, t]));
+  // Yesterday's self-reflection — fed into the research so the book learns from its own calls.
+  const lessons = (await ctx.repo.listPaperReflections())[0]?.reflection ?? null;
 
   // Today's fresh bullish / bearish mention counts per ticker.
   const today = ctx.date;
@@ -128,7 +130,7 @@ export async function runThesisStage(ctx: RunContext): Promise<void> {
     let corro = 0;
     if (researchBudget > 0) {
       researchBudget -= 1;
-      const r = await researchThesisOnline(t.ticker, "long");
+      const r = await researchThesisOnline(t.ticker, "long", lessons);
       corro = r.ok ? (r.verdict === "confirm" ? 12 : r.verdict === "refute" ? -20 : 0) : 0;
       steps.push({
         date: today,
@@ -226,7 +228,7 @@ export async function runThesisStage(ctx: RunContext): Promise<void> {
     // Independent deterioration check (only when there's already some concern).
     if (s >= 20 && researchBudget > 0) {
       researchBudget -= 1;
-      const r = await researchThesisOnline(p.ticker, "exit");
+      const r = await researchThesisOnline(p.ticker, "exit", lessons);
       const w = r.ok ? (r.verdict === "confirm" ? 20 : r.verdict === "refute" ? -15 : 0) : 0;
       s += w;
       steps.push({
