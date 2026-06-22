@@ -1,14 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import type { PaperThesis } from "@trading/core";
+import type { ThesisView } from "@/lib/paperPortfolio";
 import { ThesisFlow } from "@/components/PaperTradeLog";
 
 // Buy bar (mirror of BUY_BAR in core's thesis stage) for the progress display.
 const BUY_BAR = 70;
 
-export function PaperTheses({ theses }: { theses: PaperThesis[] }) {
-  const [open, setOpen] = useState<PaperThesis | null>(null);
+const PLATFORM_LABEL: Record<string, string> = {
+  x: "X", youtube: "יוטיוב", tiktok: "טיקטוק", instagram: "אינסטגרם", rss: "RSS",
+};
+
+export function PaperTheses({ theses }: { theses: ThesisView[] }) {
+  const [open, setOpen] = useState<ThesisView | null>(null);
   if (theses.length === 0) {
     return <p className="text-sm text-[var(--muted)]">אין כרגע תזות בבנייה.</p>;
   }
@@ -36,7 +40,13 @@ export function PaperTheses({ theses }: { theses: PaperThesis[] }) {
               <div className="mt-1 h-2 overflow-hidden rounded bg-[var(--background)]">
                 <div className={`h-full ${ready ? "bg-[var(--pos)]" : "bg-[var(--muted)]"}`} style={{ width: `${pct}%` }} />
               </div>
-              <p className="mt-2 text-xs text-[var(--pos)]">תרשים זרימה ←</p>
+              <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                <span className="text-[var(--muted)]">🔗 {t.sources.length} מקורות</span>
+                <span className="pos">▲ {t.bull}</span>
+                <span className="neg">▼ {t.bear}</span>
+                {t.manipulation && <span className="neg font-semibold">⚠️ חשד מניפולציה</span>}
+              </div>
+              <p className="mt-2 text-xs text-[var(--pos)]">תרשים זרימה ומקורות ←</p>
             </button>
           );
         })}
@@ -52,9 +62,45 @@ export function PaperTheses({ theses }: { theses: PaperThesis[] }) {
               <button onClick={() => setOpen(null)} className="text-[var(--muted)] hover:text-[var(--text)]">✕</button>
             </div>
             <p className="mb-3 text-sm text-[var(--muted)]">
-              עוצמה {open.strength}/{BUY_BAR} · {open.days} ימי בנייה. כשהעוצמה תעבור את הסף — קנייה אוטומטית.
+              עוצמה {open.strength}/{BUY_BAR} · {open.days} ימי בנייה
+              {open.conviction != null ? ` · קונביקשן ${open.conviction}%` : ""}. כשהעוצמה תעבור את הסף — קנייה אוטומטית.
             </p>
+
+            {open.manipulation && (
+              <div className="mb-3 rounded-lg border border-[var(--neg)] p-3 text-sm">
+                <span className="neg font-semibold">⚠️ דגל חשד מניפולציה</span>
+                <span className="text-[var(--muted)]"> — המערכת סימנה את הטיקר כחשוד. בדוק את המקורות לפני שאתה סומך על התזה.</span>
+              </div>
+            )}
+
             <ThesisFlow steps={open.steps} />
+
+            <div className="mt-4">
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="text-sm font-semibold">מקורות ואזכורים ({open.sources.length})</h3>
+                <span className="text-xs"><span className="pos">▲ {open.bull} חיוביים</span> · <span className="neg">▼ {open.bear} שליליים</span></span>
+              </div>
+              {open.sources.length === 0 ? (
+                <p className="text-xs text-[var(--muted)]">אין מקורות חברתיים — התזה נשענת על טכני/פונדמנטלי בלבד.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {open.sources.map((q, i) => (
+                    <li key={i} className="text-sm">
+                      <span className={q.sentiment === "bullish" ? "pos" : q.sentiment === "bearish" ? "neg" : "text-[var(--muted)]"}>
+                        {q.sentiment === "bullish" ? "▲" : q.sentiment === "bearish" ? "▼" : "•"}
+                      </span>{" "}
+                      <span className="text-xs text-[var(--muted)]">{PLATFORM_LABEL[q.platform] ?? q.platform} · </span>
+                      {q.url ? (
+                        <a href={q.url} target="_blank" rel="noreferrer" className="font-semibold hover:underline">{q.handle}</a>
+                      ) : (
+                        <span className="font-semibold">{q.handle}</span>
+                      )}
+                      {q.claim && <span className="text-[var(--muted)]"> — “{q.claim}”</span>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
         </div>
       )}

@@ -10,7 +10,11 @@ import {
   type PaperTrade,
   type PortfolioStats,
   type PositionView,
+  type Post,
   type Quote,
+  type Sentiment,
+  type Signal,
+  type Source,
 } from "@trading/core";
 import { cachedToQuote, latestUpdate } from "@/lib/portfolio";
 
@@ -23,6 +27,29 @@ export interface PlannedSell {
   ticker: string;
   reason: string;
 }
+
+/** One raw piece of social evidence behind a thesis (for the manipulation audit). */
+export interface ThesisSource {
+  platform: string;
+  handle: string;
+  claim: string;
+  url: string;
+  sentiment: Sentiment;
+}
+
+/**
+ * A building/planned thesis enriched with the raw sources behind it + a
+ * manipulation flag, so the paper page can show — already at 14:30, before any
+ * buy — exactly which accounts/claims drove each target and whether it's flagged
+ * as possible manipulation.
+ */
+export type ThesisView = PaperThesis & {
+  sources: ThesisSource[];
+  bull: number;
+  bear: number;
+  manipulation: boolean;
+  conviction: number | null;
+};
 
 /** Enriched paper holding — keeps the row id so it can be removed. */
 export type PaperPositionView = PositionView & { id: string };
@@ -43,12 +70,12 @@ export interface PaperPortfolioData {
   totalReturnPct: number;
   /** Most recent autonomous trades, newest first. */
   trades: PaperTrade[];
-  /** Long theses still building toward a buy (strongest first). */
-  buildingTheses: PaperThesis[];
+  /** Long theses still building toward a buy (strongest first), with sources. */
+  buildingTheses: ThesisView[];
   /** US market state ("REGULAR"/"CLOSED"/"PRE"/"POST"/…), or null if unknown. */
   marketState: string | null;
   /** Buy ideas ready for the next session (long theses past the bar, not held). */
-  plannedBuys: PaperThesis[];
+  plannedBuys: ThesisView[];
   /** Sell ideas ready for the next session (holdings that hit an exit rule). */
   plannedSells: PlannedSell[];
 }
@@ -60,24 +87,67 @@ export interface PaperPortfolioData {
  */
 export async function getPaperPortfolio(): Promise<PaperPortfolioData> {
   const repo = getRepository();
-  const [positions, fxRow, cached, account, trades, theses, tracked, marketState] = await Promise.all([
-    repo.listPaperPositions(),
-    repo.latestFx(),
-    repo.listCachedQuotes(),
-    repo.getPaperAccount(),
-    repo.listPaperTrades(),
-    repo.listPaperTheses(),
-    repo.listTracked(),
-    getUsMarketState().catch(() => null),
-  ]);
+  const [positions, fxRow, cached, account, trades, theses, tracked, marketState, signals, posts, sources, recommendations] =
+    await Promise.all([
+      repo.listPaperPositions(),
+      repo.latestFx(),
+      repo.listCachedQuotes(),
+      repo.getPaperAccount(),
+      repo.listPaperTrades(),
+      repo.listPaperTheses(),
+      repo.listTracked(),
+      getUsMarketState().catch(() => null),
+      repo.listSignals(),
+      repo.listPosts(),
+      repo.listSources(),
+      repo.listRecommendations(),
+    ]);
   const heldKeys = new Set(positions.map((p) => p.ticker.toUpperCase()));
-  const buildingTheses = theses
-    .filter((t) => t.direction === "long" && t.status === "building")
-    .sort((a, b) => b.strength - a.strength);
   const exitByTicker = new Map(
     theses.filter((t) => t.direction === "exit").map((t) => [t.ticker.toUpperCase(), t]),
   );
   const convByTicker = new Map(tracked.map((t) => [t.ticker.toUpperCase(), t.conviction ?? null]));
+
+  // Attach the raw social evidence + manipulation flag to each thesis so the page
+  // can show what's driving the target and let the user audit for manipulation.
+  const postsById = new Map<string, Post>(posts.map((p) => [p.id, p]));
+  const sourcesById = new Map<string, Source>(sources.map((s) => [s.id, s]));
+  const manipByTicker = new Map<string, boolean>(
+    recommendations.map((r) => [r.ticker.toUpperCase(), !!r.manipulation_flag]),
+  );
+  const enrichThesis = (t: PaperThesis): ThesisView => {
+    const key = t.ticker.toUpperCase();
+    const srcs: ThesisSource[] = [];
+    let bull = 0;
+    let bear = 0;
+    for (const s of signals) {
+      if (s.ticker.toUpperCase() !== key) continue;
+      if (s.sentiment === "bullish") bull++;
+      else if (s.sentiment === "bearish") bear++;
+      const post = postsById.get(s.post_id);
+      const src = post ? sourcesById.get(post.source_id) : undefined;
+      srcs.push({
+        platform: src?.platform ?? "rss",
+        handle: src?.handle ?? "—",
+        claim: s.claim,
+        url: post?.url ?? "",
+        sentiment: s.sentiment,
+      });
+    }
+    return {
+      ...t,
+      sources: srcs.slice(0, 20),
+      bull,
+      bear,
+      manipulation: manipByTicker.get(key) ?? false,
+      conviction: convByTicker.get(key) ?? null,
+    };
+  };
+
+  const buildingTheses = theses
+    .filter((t) => t.direction === "long" && t.status === "building")
+    .sort((a, b) => b.strength - a.strength)
+    .map(enrichThesis);
 
   // Buy ideas the engine would act on next session: matured, not-held long theses.
   const plannedBuys = buildingTheses.filter((t) => t.strength >= BUY_BAR && !heldKeys.has(t.ticker.toUpperCase()));
