@@ -80,3 +80,31 @@ export function socialScore(bull: number, bear: number): number {
 export function blendConviction(technical: number, fundamental: number, social: number): number {
   return clamp(W_TECHNICAL * technical + W_FUNDAMENTAL * fundamental + W_SOCIAL * social);
 }
+
+/**
+ * Readable Hebrew technical read of the chart (RSI / MACD / price-vs-MAs / trend),
+ * for the thesis flow chart. `score` is the technicalScore so the line ends with a
+ * verdict on whether the chart confirms, is neutral on, or weakens the thesis.
+ */
+export function technicalSummary(t: Technicals, price: number | null, score: number): string {
+  const parts: string[] = [];
+  const rsi = Math.round(t.rsi);
+  parts.push(
+    t.rsi >= 70 ? `RSI ${rsi} (קנוי-יתר)` :
+    t.rsi <= 30 ? `RSI ${rsi} (מכור-יתר)` :
+    t.rsi >= 50 ? `RSI ${rsi} (בריא)` : `RSI ${rsi} (חלש)`,
+  );
+  parts.push(t.macd > t.macd_signal ? "MACD חיובי (מעל הסיגנל)" : "MACD שלילי (מתחת לסיגנל)");
+  if (price && t.sma50 > 0 && t.sma200 > 0) {
+    const a50 = price > t.sma50;
+    const a200 = price > t.sma200;
+    parts.push(
+      a50 && a200 ? "מעל SMA50 ו-SMA200" :
+      !a50 && !a200 ? "מתחת ל-SMA50 ו-SMA200" :
+      a50 ? "מעל SMA50, מתחת ל-SMA200" : "מתחת ל-SMA50, מעל SMA200",
+    );
+  }
+  parts.push(t.trend === "up" ? "מגמה עולה" : t.trend === "down" ? "מגמה יורדת" : "מגמה שטוחה");
+  const verdict = score >= 60 ? "מאשר את התזה" : score >= 45 ? "ניטרלי" : "מחליש את התזה";
+  return `${parts.join(" · ")} → ${verdict} (ט ${score})`;
+}

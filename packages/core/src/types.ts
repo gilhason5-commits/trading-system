@@ -196,6 +196,8 @@ export interface TrackedRecommendation {
   conviction?: number | null;
   /** Change in conviction vs the previous run (points; + improved, − worsened). */
   conviction_delta?: number | null;
+  /** Readable technical-analysis summary (RSI/MACD/SMA/trend + verdict). */
+  technical_summary?: string | null;
   created_at: string;
 }
 

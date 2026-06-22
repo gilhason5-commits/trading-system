@@ -1,4 +1,4 @@
-import { blendConviction, fundamentalScore, MIN_CONVICTION, MIN_SYSTEM_SCORE, socialScore, technicalScore } from "../scoring.ts";
+import { blendConviction, fundamentalScore, MIN_CONVICTION, MIN_SYSTEM_SCORE, socialScore, technicalScore, technicalSummary } from "../scoring.ts";
 import type { RunContext } from "./context.ts";
 
 // Recommendation tracking (7-day follow). After the research stage, today's
@@ -108,9 +108,12 @@ export async function runTrackingStage(ctx: RunContext): Promise<void> {
     }
 
     let technical = 50;
+    let techSummary: string | null = null;
     try {
       const tech = await ctx.md.getTechnicals(t.ticker, market);
-      technical = technicalScore(tech, priceByTicker.get(key) ?? null);
+      const price = priceByTicker.get(key) ?? null;
+      technical = technicalScore(tech, price);
+      techSummary = technicalSummary(tech, price, technical);
     } catch {
       // no technicals (e.g. crypto/ETF on this provider) → stay neutral
     }
@@ -166,6 +169,7 @@ export async function runTrackingStage(ctx: RunContext): Promise<void> {
       social_score: social,
       conviction,
       conviction_delta: convictionDelta,
+      technical_summary: techSummary,
     });
   }
 }

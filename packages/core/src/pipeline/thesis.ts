@@ -78,6 +78,16 @@ export async function runThesisStage(ctx: RunContext): Promise<void> {
       weight: Math.round((t.conviction ?? 0) - 50),
     });
 
+    // Technical read of the chart (RSI/MACD/SMA/trend) that validates the thesis.
+    if (t.technical_summary) {
+      steps.push({
+        date: today,
+        stage: "ניתוח טכני",
+        detail: t.technical_summary,
+        weight: Math.round((t.technical_score ?? 50) - 50),
+      });
+    }
+
     // Independent verification (top candidates only, to cap cost).
     let corro = 0;
     if (researchBudget > 0) {
