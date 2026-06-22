@@ -178,10 +178,15 @@ export async function runAutoTradeStage(ctx: RunContext): Promise<void> {
 
     const exitTh = exitThesis.get(key);
     let reason: string | null = null;
-    // Hard, always-on risk rules (don't wait for a thesis to mature).
-    if (retPct <= STRATEGY.stopLossPct) {
+    // Hard, always-on risk rules — each position's own chart/fundamental/analyst
+    // plan (falls back to the global ±% band for legacy positions without a plan).
+    if (p.stop_price != null && ep.price <= p.stop_price) {
+      reason = `סטופ-לוס: ${round2(ep.price)} ≤ סטופ ${p.stop_price} (${retPct.toFixed(1)}%)`;
+    } else if (p.target_price != null && ep.price >= p.target_price) {
+      reason = `מימוש רווח: ${round2(ep.price)} ≥ יעד ${p.target_price} (+${retPct.toFixed(1)}%)`;
+    } else if (p.stop_price == null && retPct <= STRATEGY.stopLossPct) {
       reason = `סטופ-לוס: תשואה ${retPct.toFixed(1)}% (מתחת ל-${STRATEGY.stopLossPct}%)`;
-    } else if (retPct >= STRATEGY.takeProfitPct) {
+    } else if (p.target_price == null && retPct >= STRATEGY.takeProfitPct) {
       reason = `מימוש רווח: תשואה +${retPct.toFixed(1)}% (מעל ${STRATEGY.takeProfitPct}%)`;
     } else if (conviction != null && conviction < MIN_CONVICTION) {
       reason = `הקונביקשן ירד ל-${conviction}% (מתחת ל-${MIN_CONVICTION}%) — סוגר פוזיציה`;
@@ -264,15 +269,29 @@ export async function runAutoTradeStage(ctx: RunContext): Promise<void> {
     slots -= 1;
     buysLeft -= 1;
 
-    // The exit plan, fixed at entry: stop-loss and take-profit levels.
-    const stopPrice = round2(ep.price * (1 + STRATEGY.stopLossPct / 100));
-    const targetPrice = round2(ep.price * (1 + STRATEGY.takeProfitPct / 100));
+    // Exit plan derived per name (not flat ±%): stop from chart volatility (ATR),
+    // target from reward:risk scaled by fundamentals and capped by analyst targets.
+    const entry = ep.price;
+    const atr = (await ctx.md.getTechnicals(t.ticker, market).catch(() => null))?.atr ?? 0;
+    // Stop = 2.5×ATR below entry, clamped to a sane −6%..−20% band.
+    const atrStop = atr > 0 ? entry - 2.5 * atr : entry * 0.88;
+    const stopPrice = round2(Math.min(entry * 0.94, Math.max(entry * 0.8, atrStop)));
+    const risk = entry - stopPrice;
+    // Reward:risk scales with fundamentals (stronger → let it run): R 1.5..4.
+    const rr = Math.max(1.5, Math.min(4, 2 + ((t.fundamental_score ?? 50) - 50) / 25));
+    let aHigh: number | null = null;
+    try { aHigh = (await fetchAnalystData(t.ticker)).target_high; } catch { /* no analyst data */ }
+    let targetPrice = entry + rr * risk;
+    if (aHigh && targetPrice > aHigh) targetPrice = Math.max(aHigh, entry + 1.5 * risk); // don't expect beyond the bulls
+    targetPrice = round2(targetPrice);
+    const stopPct = round2((stopPrice / entry - 1) * 100);
+    const targetPct = round2((targetPrice / entry - 1) * 100);
     const plan = {
       stop_price: stopPrice,
-      stop_pct: STRATEGY.stopLossPct,
+      stop_pct: stopPct,
       target_price: targetPrice,
-      target_pct: STRATEGY.takeProfitPct,
-      exit_rule: `סטופ-לוס ${stopPrice} ${ep.currency} (${STRATEGY.stopLossPct}%) · יעד ${targetPrice} ${ep.currency} (+${STRATEGY.takeProfitPct}%) · יציאה גם אם הקונביקשן יורד מתחת ל-${MIN_CONVICTION}% או יוצא מההמלצות`,
+      target_pct: targetPct,
+      exit_rule: `סטופ ${stopPrice} ${ep.currency} (${stopPct}%, ${atr > 0 ? "2.5×ATR" : "ברירת מחדל"}) · יעד ${targetPrice} ${ep.currency} (+${targetPct}%, R/R ${rr.toFixed(1)} לפי פונדמנטל${aHigh ? " · תקרת יעד אנליסט" : ""}) · יציאה גם אם קונביקשן<${MIN_CONVICTION}%`,
     };
 
     await ctx.repo.addPaperPosition({
@@ -281,6 +300,8 @@ export async function runAutoTradeStage(ctx: RunContext): Promise<void> {
       qty,
       avg_cost: ep.price,
       currency: ep.currency,
+      stop_price: stopPrice,
+      target_price: targetPrice,
     });
     await ctx.repo.addPaperTrade({
       date: ctx.date,

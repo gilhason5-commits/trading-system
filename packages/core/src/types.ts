@@ -49,6 +49,9 @@ export interface Position {
  */
 export interface PaperPosition extends Position {
   id: string;
+  /** Per-position exit plan set at entry (native currency). Null = legacy/global rules. */
+  stop_price?: number | null;
+  target_price?: number | null;
   /** ISO timestamp when the position was opened (entry). */
   created_at: string;
 }

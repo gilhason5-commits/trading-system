@@ -23,6 +23,8 @@ export interface Technicals {
   macd_signal: number;
   sma50: number;
   sma200: number;
+  /** Average True Range (14) — volatility, for volatility-scaled stops. */
+  atr?: number;
   /** "up" | "down" | "flat" trend from MA structure. */
   trend: "up" | "down" | "flat";
 }
@@ -121,11 +123,12 @@ export class LiveMarketData implements MarketDataSource {
     const base: Record<string, string> = { symbol, interval: "1day" };
     if (market === "TASE") base.mic_code = "XTAE";
 
-    const [rsiRes, macdRes, sma50Res, sma200Res] = await Promise.all([
+    const [rsiRes, macdRes, sma50Res, sma200Res, atrRes] = await Promise.all([
       tdFetch(this.q("/rsi", { ...base, time_period: "14" })),
       tdFetch(this.q("/macd", { ...base, fast_period: "12", slow_period: "26", signal_period: "9" })),
       tdFetch(this.q("/sma", { ...base, time_period: "50" })),
       tdFetch(this.q("/sma", { ...base, time_period: "200" })),
+      tdFetch(this.q("/atr", { ...base, time_period: "14" })),
     ]);
 
     if (!rsiRes.ok) throw new Error(`twelvedata rsi ${symbol}: HTTP ${rsiRes.status}`);
@@ -148,13 +151,15 @@ export class LiveMarketData implements MarketDataSource {
     const macd_signal = Number(macdJ.values?.[0]?.macd_signal ?? 0);
     const sma50 = Number(sma50J.values?.[0]?.sma ?? 0);
     const sma200 = Number(sma200J.values?.[0]?.sma ?? 0);
+    const atrJ = (await atrRes.json().catch(() => ({}))) as { values?: Array<{ atr?: string }> };
+    const atr = Number(atrJ.values?.[0]?.atr ?? 0) || undefined;
 
     // Trend: "up" when sma50 > sma200 (golden-cross structure), "down" when sma50 < sma200, else "flat"
     const gap = sma200 > 0 ? (sma50 - sma200) / sma200 : 0;
     const trend: "up" | "down" | "flat" =
       gap > 0.005 ? "up" : gap < -0.005 ? "down" : "flat";
 
-    return { rsi, macd, macd_signal, sma50, sma200, trend };
+    return { rsi, macd, macd_signal, sma50, sma200, atr, trend };
   }
 }
 
