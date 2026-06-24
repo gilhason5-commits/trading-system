@@ -1,6 +1,6 @@
 import { fetchAnalystData } from "../datasources/analysts.ts";
 import { researchThesisOnline } from "../datasources/thesisresearch.ts";
-import { MIN_CONVICTION } from "../scoring.ts";
+import { blendConviction, fundamentalScore, MIN_CONVICTION, socialScore, technicalScore, technicalSummary } from "../scoring.ts";
 import type { PaperThesis, ThesisStep, TrackedRecommendation } from "../types.ts";
 import type { RunContext } from "./context.ts";
 
@@ -19,6 +19,11 @@ const MAX_STEPS = 40;
 const STALE_DROP_DAYS = 2; // release a building thesis after this many trading days w/o improvement
 
 const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
+
+/** Whole days from `date` to `to` (positive if `to` is later). */
+function daysSince(date: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${date}T00:00:00Z`)) / 86_400_000);
+}
 
 /** US trading day (Mon–Fri), so Fri→Mon count as consecutive (weekend skipped). */
 function isTradingDay(date: string): boolean {
@@ -197,27 +202,70 @@ export async function runThesisStage(ctx: RunContext): Promise<void> {
   }
 
   // ── EXIT theses for held paper positions ─────────────────────────────────
-  const convByTicker = new Map(tracked.map((t) => [t.ticker.toUpperCase(), t]));
+  // All-time bull/bear per ticker for the social re-score of held names.
+  const bbAll = new Map<string, { bull: number; bear: number }>();
+  for (const sig of signals) {
+    const k = sig.ticker.toUpperCase();
+    const e2 = bbAll.get(k) ?? { bull: 0, bear: 0 };
+    if (sig.sentiment === "bullish") e2.bull++;
+    else if (sig.sentiment === "bearish") e2.bear++;
+    bbAll.set(k, e2);
+  }
+  const priceByTicker = new Map((await ctx.repo.listCachedQuotes()).map((c) => [c.ticker.toUpperCase(), c.price]));
+
   for (const p of paper) {
     const key = p.ticker.toUpperCase();
     const existing = thesisByKey.get(`${key}:exit`);
     const days = existing ? existing.days + (existing.updated_at.slice(0, 10) !== today ? 1 : 0) : 1;
-    const tr = convByTicker.get(key);
     const steps: ThesisStep[] = existing ? [...existing.steps] : [];
+    const market = p.market;
+    const price = priceByTicker.get(key) ?? null;
+
+    // Fresh re-analysis of the HELD position every run (technical + fundamental +
+    // social), even after it dropped out of the daily recommendations — so a name
+    // like a chip stock in a sector selloff is re-scored, not left stale since entry.
+    let technical = 50;
+    let techSummary: string | null = null;
+    try {
+      const tech = await ctx.md.getTechnicals(p.ticker, market);
+      technical = technicalScore(tech, price);
+      techSummary = technicalSummary(tech, price, technical);
+    } catch { /* no technicals */ }
+    let fundamental = 50;
+    let earningsInDays: number | null = null;
+    try {
+      const f = await ctx.fundamentals.getFundamentals(p.ticker);
+      fundamental = fundamentalScore(f);
+      if (f.next_earnings_date) earningsInDays = daysSince(today, f.next_earnings_date);
+    } catch { /* no fundamentals */ }
+    const bb = bbAll.get(key) ?? { bull: 0, bear: 0 };
+    const social = socialScore(bb.bull, bb.bear);
+    const reConviction = blendConviction(technical, fundamental, social);
 
     let s = 0;
-    const conviction = tr?.conviction ?? null;
-    if (conviction == null) {
-      s += 35;
-      steps.push({ date: today, stage: "מעקב", detail: "יצאה מההמלצות הפעילות (אין קונביקשן)", weight: 35 });
-    } else if (conviction < MIN_CONVICTION) {
+    steps.push({
+      date: today,
+      stage: "ניתוח מחדש (אחזקה)",
+      detail: `קונביקשן מעודכן ${reConviction}% · ט ${technical}/פ ${fundamental}/ח ${social}` + (techSummary ? ` · ${techSummary.split(" → ")[0]}` : ""),
+      weight: Math.round(50 - reConviction),
+    });
+
+    // Weakening conviction → exit pressure.
+    if (reConviction < 45) {
       s += 40;
-      steps.push({ date: today, stage: "קונביקשן", detail: `ירד ל-${conviction}% (מתחת ל-${MIN_CONVICTION}%)`, weight: 40 });
+      steps.push({ date: today, stage: "קונביקשן", detail: `חלש מאוד (${reConviction}%) — שקול יציאה`, weight: 40 });
+    } else if (reConviction < MIN_CONVICTION) {
+      s += 25;
+      steps.push({ date: today, stage: "קונביקשן", detail: `נחלש ל-${reConviction}% (מתחת ל-${MIN_CONVICTION}%) — שקול צמצום`, weight: 25 });
     }
-    const tech = tr?.technical_score ?? 50;
-    if (tech < 40) {
+    if (technical < 40) {
       s += 20;
-      steps.push({ date: today, stage: "ניתוח טכני", detail: `הגרף נכנס לאזור דובי (טכני ${tech})`, weight: 20 });
+      steps.push({ date: today, stage: "ניתוח טכני", detail: `גרף דובי (טכני ${technical})`, weight: 20 });
+    }
+    // Earnings = binary event → de-risk into it.
+    if (earningsInDays != null && earningsInDays >= 0 && earningsInDays <= 1) {
+      s += 18;
+      steps.push({ date: today, stage: "דוחות מתקרבים", detail: `דוחות ${earningsInDays === 0 ? "היום" : "מחר"} — סיכון בינארי, שקול צמצום לפני הדוח`, weight: 18 });
     }
     const bearishToday = bear.get(key) ?? 0;
     if (bearishToday > 0) {
@@ -225,7 +273,7 @@ export async function runThesisStage(ctx: RunContext): Promise<void> {
       steps.push({ date: today, stage: "אזכורים שליליים", detail: `${bearishToday} אזכורים שליליים היום`, weight: Math.min(25, bearishToday * 12) });
     }
 
-    // Independent deterioration check (only when there's already some concern).
+    // Independent deterioration check (when there's already some concern).
     if (s >= 20 && researchBudget > 0) {
       researchBudget -= 1;
       const r = await researchThesisOnline(p.ticker, "exit", lessons);
@@ -241,11 +289,16 @@ export async function runThesisStage(ctx: RunContext): Promise<void> {
       });
     }
 
+    // Recommended stance from the re-analysis.
+    const sc = clamp(s);
+    const stance = sc >= EXIT_BAR ? "יציאה מלאה" : sc >= 35 ? "צמצום (TRIM)" : "החזקה";
+    steps.push({ date: today, stage: "המלצה", detail: `${stance} · עוצמת יציאה ${sc}/${EXIT_BAR}`, weight: 0 });
+
     await ctx.repo.upsertPaperThesis({
       ticker: p.ticker,
       direction: "exit",
       status: "building",
-      strength: clamp(s),
+      strength: sc,
       days,
       first_date: existing?.first_date ?? today,
       steps: steps.slice(-MAX_STEPS),

@@ -194,6 +194,27 @@ export async function runAutoTradeStage(ctx: RunContext): Promise<void> {
       // Soft exit: the multi-day exit thesis matured (deteriorating signals/chart).
       reason = `תזת יציאה הבשילה (עוצמה ${exitTh.strength}/${EXIT_BAR}) — סימני היחלשות מצטברים`;
     }
+    // TRIM — exit thesis is in the warning band (de-risk, e.g. into earnings or on
+    // weakening technicals) but not a full exit yet: sell ~half, keep the rest.
+    if (!reason && exitTh && exitTh.strength >= 35 && exitTh.strength < EXIT_BAR) {
+      const trimQty = Math.floor(p.qty / 2);
+      if (trimQty >= 1) {
+        const proceeds = toUsd(ep.price, ep.currency, usdIls) * trimQty;
+        cash += proceeds;
+        await ctx.repo.deletePaperPosition(p.id);
+        await ctx.repo.addPaperPosition({
+          ticker: p.ticker, market: p.market, qty: p.qty - trimQty, avg_cost: p.avg_cost,
+          currency: p.currency, stop_price: p.stop_price ?? null, target_price: p.target_price ?? null,
+        });
+        await ctx.repo.addPaperTrade({
+          date: ctx.date, ticker: p.ticker, action: "sell", qty: trimQty, price: ep.price, currency: ep.currency,
+          value_usd: round2(proceeds), conviction,
+          reason: marketTag + `צמצום (TRIM): תזת יציאה ${exitTh.strength}/${EXIT_BAR} — מקטין סיכון, מחזיק ${p.qty - trimQty}/${p.qty}`,
+          analysis: await dossier(tr, p.ticker, { ret_pct: retPct, thesis: exitTh }),
+        });
+        continue; // keep the (smaller) position + its exit thesis
+      }
+    }
     if (!reason) continue;
 
     const proceedsUsd = toUsd(ep.price, ep.currency, usdIls) * p.qty;
