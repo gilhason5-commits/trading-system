@@ -203,6 +203,16 @@ export async function runThesisStage(ctx: RunContext): Promise<void> {
   }
 
   // ── EXIT theses for held paper positions ─────────────────────────────────
+  // Drop "zombie" long theses — names that fell out of the daily recommendations
+  // (conviction slid below the interest floor, e.g. in a sector selloff) and weren't
+  // re-evaluated this run. They must not linger as stale "ready to buy" ideas.
+  const candidateKeys = new Set(candidates.map((t) => t.ticker.toUpperCase()));
+  for (const th of theses) {
+    if (th.direction !== "long" || th.status === "acted") continue;
+    const k = th.ticker.toUpperCase();
+    if (!candidateKeys.has(k) && !held.has(k)) await ctx.repo.deletePaperThesis(th.id);
+  }
+
   // Broad market/macro backdrop (Grok live search) — a sector/market shock (e.g.
   // a chip-sector crash) should pressure exits across holdings, not just rely on
   // the per-position stop. risk_off / a major shock lowers confidence in holdings.
