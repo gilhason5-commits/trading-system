@@ -1,4 +1,5 @@
 import { fetchAnalystData } from "../datasources/analysts.ts";
+import { assessMarketContext } from "../datasources/marketcontext.ts";
 import { researchThesisOnline } from "../datasources/thesisresearch.ts";
 import { blendConviction, fundamentalScore, MIN_CONVICTION, socialScore, technicalScore, technicalSummary } from "../scoring.ts";
 import type { PaperThesis, ThesisStep, TrackedRecommendation } from "../types.ts";
@@ -202,6 +203,14 @@ export async function runThesisStage(ctx: RunContext): Promise<void> {
   }
 
   // ── EXIT theses for held paper positions ─────────────────────────────────
+  // Broad market/macro backdrop (Grok live search) — a sector/market shock (e.g.
+  // a chip-sector crash) should pressure exits across holdings, not just rely on
+  // the per-position stop. risk_off / a major shock lowers confidence in holdings.
+  const mkt = await assessMarketContext().catch(() => null);
+  const marketExitWeight = mkt
+    ? !mkt.tradeable ? 35 : mkt.regime === "risk_off" ? 18 : mkt.regime === "risk_on" ? -8 : 0
+    : 0;
+
   // All-time bull/bear per ticker for the social re-score of held names.
   const bbAll = new Map<string, { bull: number; bear: number }>();
   for (const sig of signals) {
@@ -249,6 +258,20 @@ export async function runThesisStage(ctx: RunContext): Promise<void> {
       detail: `קונביקשן מעודכן ${reConviction}% · ט ${technical}/פ ${fundamental}/ח ${social}` + (techSummary ? ` · ${techSummary.split(" → ")[0]}` : ""),
       weight: Math.round(50 - reConviction),
     });
+
+    // Broad market/macro event — a sector/market shock pressures the holding even
+    // before the stop is hit (the user's "black swan" case).
+    if (marketExitWeight !== 0 && mkt) {
+      s += marketExitWeight;
+      steps.push({
+        date: today,
+        stage: "מגמת שוק",
+        detail: (marketExitWeight > 0
+          ? (!mkt.tradeable ? "⚠️ זעזוע שוק/סקטור משמעותי" : "מגמת שוק שלילית (risk-off)")
+          : "מגמת שוק חיובית — תומך בהחזקה") + (mkt.summary ? `: ${mkt.summary}` : ""),
+        weight: marketExitWeight,
+      });
+    }
 
     // Weakening conviction → exit pressure.
     if (reConviction < 45) {
