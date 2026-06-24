@@ -258,6 +258,48 @@ export async function runAutoTradeStage(ctx: RunContext): Promise<void> {
     .filter((th) => !heldNow.has(th.ticker.toUpperCase()))
     .sort((a, b) => b.strength - a.strength);
 
+  // ── ROTATION — if a clearly stronger idea is ready but there's no deployable cash,
+  // sell the weakest (low-conviction) holding to free capital. This only SELLS; the
+  // entry loop below then deploys the freed cash into the best ideas. One benchmark:
+  // the strongest ready candidate, vs the weakest weak holding.
+  const holdingsUsdOf = async () =>
+    (await ctx.repo.listPaperPositions()).reduce((sum, p) => {
+      const c = priceCache.get(p.ticker.toUpperCase());
+      return sum + toUsd(c?.price ?? p.avg_cost, (c?.currency ?? p.currency) as Currency, usdIls) * p.qty;
+    }, 0);
+  const ROTATE_MARGIN = 15;
+  const best = candidates[0];
+  const bt = best ? convByTicker.get(best.ticker.toUpperCase()) : undefined;
+  const bestLegsOk = !!bt && (bt.technical_score ?? 0) >= f && (bt.fundamental_score ?? 0) >= f && (bt.social_score ?? 0) >= f;
+  const bestConv = bt?.conviction ?? best?.strength ?? 0;
+  while (best && bestLegsOk && buysLeft > 0) {
+    const accountValue = cash + (await holdingsUsdOf());
+    if (cash - accountValue * STRATEGY.minCashReservePct >= accountValue * STRATEGY.targetWeightPct) break; // enough cash for a buy
+    const cur = await ctx.repo.listPaperPositions();
+    let weakest = cur[0];
+    let weakScore = Infinity;
+    for (const p of cur) {
+      const pc = convByTicker.get(p.ticker.toUpperCase())?.conviction ?? 35; // out of recs ⇒ weak
+      if (pc < weakScore) { weakScore = pc; weakest = p; }
+    }
+    if (!weakest || weakScore >= MIN_CONVICTION || bestConv < weakScore + ROTATE_MARGIN) break;
+    const wq = priceCache.get(weakest.ticker.toUpperCase());
+    const wpx = wq?.price ?? weakest.avg_cost;
+    const proceeds = toUsd(wpx, (wq?.currency ?? weakest.currency) as Currency, usdIls) * weakest.qty;
+    const wRet = weakest.avg_cost > 0 ? ((wpx - weakest.avg_cost) / weakest.avg_cost) * 100 : 0;
+    cash += proceeds;
+    await ctx.repo.deletePaperPosition(weakest.id);
+    await ctx.repo.addPaperTrade({
+      date: ctx.date, ticker: weakest.ticker, action: "sell", qty: weakest.qty, price: wpx, currency: weakest.currency,
+      value_usd: round2(proceeds), conviction: convByTicker.get(weakest.ticker.toUpperCase())?.conviction ?? null,
+      reason: marketTag + `רוטציה: מוכר ${weakest.ticker} (קונביקשן ${Math.round(weakScore)}) לפנות הון לרעיון חזק יותר — ${best.ticker} (קונביקשן ${bestConv}, עוצמה ${best.strength})`,
+      analysis: await dossier(convByTicker.get(weakest.ticker.toUpperCase()), weakest.ticker, { ret_pct: wRet }),
+    });
+    for (const th2 of [exitThesis.get(weakest.ticker.toUpperCase()), longThesis.get(weakest.ticker.toUpperCase())]) if (th2) await ctx.repo.deletePaperThesis(th2.id);
+    heldNow.delete(weakest.ticker.toUpperCase());
+    slots += 1;
+  }
+
   for (const th of candidates) {
     if (slots <= 0 || buysLeft <= 0) break;
     const key = th.ticker.toUpperCase();
