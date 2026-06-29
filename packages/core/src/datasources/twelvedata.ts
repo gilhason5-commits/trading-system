@@ -25,6 +25,8 @@ export interface Technicals {
   sma200: number;
   /** Average True Range (14) — volatility, for volatility-scaled stops. */
   atr?: number;
+  /** 20-day EMA — short-term reference for the anti-extension entry gate. */
+  ema20?: number;
   /** "up" | "down" | "flat" trend from MA structure. */
   trend: "up" | "down" | "flat";
 }

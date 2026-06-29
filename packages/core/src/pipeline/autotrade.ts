@@ -34,6 +34,17 @@ const STRATEGY = {
   targetWeightPct: 0.12, // size each new buy at ~12% of total account value
   stopLossPct: -15, // exit a loser at −15%
   takeProfitPct: 40, // realise a winner at +40%
+  // ── Anti-extension entry gate ────────────────────────────────────────────
+  // A thesis matures exactly when a name is already extended (social peak +
+  // technical confirmation + uptrend) — so the engine was buying local tops
+  // (MU at strength 100 → −4.8% in 2 days; GLW after a +17% week). Refuse to
+  // chase: cap thesis strength, RSI, and distance above the 20-EMA (in ATRs),
+  // and require price to actually sit above the 20-EMA (trend confirmed, not yet
+  // stretched). Tighten the volatility stop too — real ATR is now populated.
+  maxBuyStrength: 82, // strength above this = overextended, likely a top
+  maxBuyRsi: 78, // classic overbought — don't enter
+  maxAtrExtension: 4, // price > 4 ATRs above the 20-EMA = chasing
+  atrStopMult: 2.0, // stop = 2.0×ATR below entry (was 2.5 — sat through big losers)
 };
 
 function toUsd(priceNative: number, currency: Currency, usdIls: number): number {
@@ -313,6 +324,28 @@ export async function runAutoTradeStage(ctx: RunContext): Promise<void> {
     const ep = await execPrice(t.ticker, market);
     if (!ep) continue;
 
+    // ── Anti-extension gate — don't chase a name that already ran ────────────
+    // Fetch the chart read once (reused below for the stop). Skip (and log why,
+    // so the decision is auditable) when the entry would be a late-momentum top.
+    const tech = await ctx.md.getTechnicals(t.ticker, market).catch(() => null);
+    const rsiNow = tech?.rsi ?? 50;
+    const atr = tech?.atr ?? 0;
+    const ema20 = tech?.ema20 ?? 0;
+    const atrExt = atr > 0 && ema20 > 0 ? (ep.price - ema20) / atr : 0;
+    let skip: string | null = null;
+    if (th.strength > STRATEGY.maxBuyStrength)
+      skip = `עוצמה ${th.strength} > ${STRATEGY.maxBuyStrength} (מתוח/overextended)`;
+    else if (rsiNow > STRATEGY.maxBuyRsi) skip = `RSI ${Math.round(rsiNow)} > ${STRATEGY.maxBuyRsi} (קנוי-יתר)`;
+    else if (ema20 > 0 && ep.price < ema20)
+      skip = `מתחת ל-EMA20 (${round2(ep.price)} < ${round2(ema20)}) — לא מאשר מגמה`;
+    else if (atrExt > STRATEGY.maxAtrExtension)
+      skip = `מתוח ${atrExt.toFixed(1)} ATR מעל EMA20 (> ${STRATEGY.maxAtrExtension}) — רודף מומנטום`;
+    if (skip) {
+      // Auditable in the run log (no DB alert — the alerts table constrains kind).
+      console.log(`[autotrade] דילוג קנייה ${t.ticker}: ${skip}`);
+      continue;
+    }
+
     // Total account value drives sizing; keep a cash reserve (don't deploy it all).
     const holdingsUsd = (await ctx.repo.listPaperPositions()).reduce((s, p) => {
       const c = priceCache.get(p.ticker.toUpperCase());
@@ -332,13 +365,14 @@ export async function runAutoTradeStage(ctx: RunContext): Promise<void> {
     slots -= 1;
     buysLeft -= 1;
 
-    // Exit plan derived per name (not flat ±%): stop from chart volatility (ATR),
-    // target from reward:risk scaled by fundamentals and capped by analyst targets.
+    // Exit plan derived per name (not flat ±%): stop from chart volatility (ATR,
+    // fetched once above), target from reward:risk scaled by fundamentals and
+    // capped by analyst targets.
     const entry = ep.price;
-    const atr = (await ctx.md.getTechnicals(t.ticker, market).catch(() => null))?.atr ?? 0;
-    // Stop = 2.5×ATR below entry, clamped to a sane −6%..−20% band.
-    const atrStop = atr > 0 ? entry - 2.5 * atr : entry * 0.88;
-    const stopPrice = round2(Math.min(entry * 0.94, Math.max(entry * 0.8, atrStop)));
+    // Stop = 2.0×ATR below entry, clamped to a tighter −6%..−12% band (was −20%,
+    // which sat through big losers — see end-of-day reflections).
+    const atrStop = atr > 0 ? entry - STRATEGY.atrStopMult * atr : entry * 0.91;
+    const stopPrice = round2(Math.min(entry * 0.94, Math.max(entry * 0.88, atrStop)));
     const risk = entry - stopPrice;
     // Reward:risk scales with fundamentals (stronger → let it run): R 1.5..4.
     const rr = Math.max(1.5, Math.min(4, 2 + ((t.fundamental_score ?? 50) - 50) / 25));
@@ -354,7 +388,7 @@ export async function runAutoTradeStage(ctx: RunContext): Promise<void> {
       stop_pct: stopPct,
       target_price: targetPrice,
       target_pct: targetPct,
-      exit_rule: `סטופ ${stopPrice} ${ep.currency} (${stopPct}%, ${atr > 0 ? "2.5×ATR" : "ברירת מחדל"}) · יעד ${targetPrice} ${ep.currency} (+${targetPct}%, R/R ${rr.toFixed(1)} לפי פונדמנטל${aHigh ? " · תקרת יעד אנליסט" : ""}) · יציאה גם אם קונביקשן<${MIN_CONVICTION}%`,
+      exit_rule: `סטופ ${stopPrice} ${ep.currency} (${stopPct}%, ${atr > 0 ? `${STRATEGY.atrStopMult}×ATR` : "ברירת מחדל"}) · יעד ${targetPrice} ${ep.currency} (+${targetPct}%, R/R ${rr.toFixed(1)} לפי פונדמנטל${aHigh ? " · תקרת יעד אנליסט" : ""}) · יציאה גם אם קונביקשן<${MIN_CONVICTION}%`,
     };
 
     await ctx.repo.addPaperPosition({
@@ -380,6 +414,7 @@ export async function runAutoTradeStage(ctx: RunContext): Promise<void> {
         `קנייה: תזה הבשילה (עוצמה ${th.strength}/${BUY_BAR}, ${th.days} ימי בנייה) · קונביקשן ${t.conviction}% (כל הרכיבים מעל ${f})` +
         ` · ט ${t.technical_score ?? "—"}/פ ${t.fundamental_score ?? "—"}/ח ${t.social_score ?? "—"}` +
         (t.reinforce_count ? ` · חוזק ×${t.reinforce_count}` : "") +
+        ` · כניסה לא מתוחה (RSI ${Math.round(rsiNow)}${atr > 0 && ema20 > 0 ? `, ${atrExt.toFixed(1)} ATR מעל EMA20` : ""})` +
         ` · ${plan.exit_rule}`,
       analysis: await dossier(t, t.ticker, { plan, thesis: th }),
     });
