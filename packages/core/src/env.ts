@@ -15,6 +15,9 @@ const schema = z.object({
   APIFY_TOKEN: z.string().optional(),
   /** Dedicated Instagram account session cookie string (for story scraping). */
   IG_SESSION: z.string().optional(),
+  /** Optional residential proxy URL for IG story calls — needed when egress is a
+   *  datacenter IP (e.g. CI runners) that Instagram hard-429s. Requires `undici`. */
+  IG_PROXY_URL: z.string().optional(),
   /** Dedicated X (Twitter) account session for tweet scraping. */
   X_AUTH_TOKEN: z.string().optional(),
   X_CT0: z.string().optional(),

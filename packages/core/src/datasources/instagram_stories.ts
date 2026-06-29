@@ -47,21 +47,68 @@ export class LiveInstagramStories implements InstagramStoriesSource {
   constructor(private readonly session: string) {}
 
   private headers(): Record<string, string> {
+    // Pull the csrf token out of the session cookie — IG flags requests whose
+    // x-csrftoken header doesn't match the csrftoken cookie. Send full browser-XHR
+    // headers so the request isn't trivially fingerprinted as a bot.
+    const csrf = /csrftoken=([^;]+)/.exec(this.session)?.[1] ?? "";
     return {
       "x-ig-app-id": APP_ID,
+      "x-csrftoken": csrf,
+      "x-requested-with": "XMLHttpRequest",
+      "x-ig-www-claim": "0",
       "user-agent": UA,
+      accept: "*/*",
+      "accept-language": "en-US,en;q=0.9",
+      "sec-fetch-site": "same-origin",
+      "sec-fetch-mode": "cors",
+      "sec-fetch-dest": "empty",
       referer: "https://www.instagram.com/",
       cookie: this.session,
     };
   }
 
+  // Fetch with retry/backoff on the soft rate-limit codes (429/403). The hard
+  // block we see from datacenter IPs (e.g. CI runners) won't clear on retry — for
+  // that, set IG_PROXY_URL to a residential proxy and the request egresses through
+  // it (Instagram serves residential IPs the same content our local runs get).
+  private async igFetch(url: string, label: string): Promise<Response> {
+    const proxy = getEnv().IG_PROXY_URL;
+    let dispatcher: unknown;
+    if (proxy) {
+      try {
+        // Computed specifier so TS doesn't hard-require `undici` at build time —
+        // it's an optional runtime dep, only needed when IG_PROXY_URL is set.
+        const mod = "undici";
+        const { ProxyAgent } = (await import(mod)) as { ProxyAgent: new (u: string) => unknown };
+        dispatcher = new ProxyAgent(proxy);
+      } catch {
+        // undici not installed — fall back to a direct request
+      }
+    }
+    let last = 0;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) {
+        // exponential backoff with jitter: ~1.5s, then ~3s
+        const wait = 1500 * 2 ** (attempt - 1) + Math.floor(Math.random() * 800);
+        await new Promise((r) => setTimeout(r, wait));
+      }
+      const res = await fetch(url, {
+        headers: this.headers(),
+        ...(dispatcher ? { dispatcher } : {}),
+      } as RequestInit);
+      if (res.ok) return res;
+      last = res.status;
+      if (res.status !== 429 && res.status !== 403) break; // only soft limits are worth a retry
+    }
+    throw new Error(`${label}: HTTP ${last}`);
+  }
+
   private async resolveUserId(username: string): Promise<string> {
     const u = username.replace(/^@/, "");
-    const res = await fetch(
+    const res = await this.igFetch(
       `https://www.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(u)}`,
-      { headers: this.headers() },
+      `IG profile ${u}`,
     );
-    if (!res.ok) throw new Error(`IG profile ${u}: HTTP ${res.status}`);
     const j = (await res.json()) as { data?: { user?: { id?: string } } };
     const id = j.data?.user?.id;
     if (!id) throw new Error(`IG profile ${u}: no user id (session expired?)`);
@@ -70,11 +117,10 @@ export class LiveInstagramStories implements InstagramStoriesSource {
 
   async fetchStories(handle: string): Promise<SocialPost[]> {
     const id = await this.resolveUserId(handle);
-    const res = await fetch(
+    const res = await this.igFetch(
       `https://www.instagram.com/api/v1/feed/reels_media/?reel_ids=${id}`,
-      { headers: this.headers() },
+      `IG stories ${handle}`,
     );
-    if (!res.ok) throw new Error(`IG stories ${handle}: HTTP ${res.status}`);
     const j = (await res.json()) as {
       reels_media?: Array<{ items?: IgStoryItem[] }>;
       reels?: Record<string, { items?: IgStoryItem[] }>;

@@ -21,7 +21,6 @@
     "node": ">=20"
   },
   "devDependencies": {
-    "playwright": "^1.61.0",
     "typescript": "^5.7.2"
   }
 }
