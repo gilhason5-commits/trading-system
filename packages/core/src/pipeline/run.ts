@@ -37,6 +37,31 @@ export interface DailyRunOptions {
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+/** A `running` run older than this (and never finished) is treated as a crash. */
+export const STALE_RUN_MINUTES = 30;
+
+/**
+ * Whether today's daily pipeline already ran (so a re-trigger should skip).
+ *
+ * A run blocks a re-run only if it succeeded (`ok`) or is a *fresh* in-flight run
+ * (`running`, started < {@link STALE_RUN_MINUTES} ago). A `running` run whose
+ * process crashed mid-way (stale, never finished) or an `error`ed run does NOT
+ * block — otherwise a single crash wedges the whole day's automation forever
+ * (which is exactly what happened when the local worker died mid-run and left the
+ * row `running`, making the cloud skip every retry).
+ */
+export function hasBlockingRunToday(runs: Run[], date: string, now: number = Date.now()): boolean {
+  return runs.some((r) => {
+    if (r.date !== date) return false;
+    if (r.status === "ok") return true;
+    if (r.status === "running") {
+      const started = r.started_at ? Date.parse(r.started_at) : 0;
+      return Number.isFinite(started) && now - started < STALE_RUN_MINUTES * 60_000;
+    }
+    return false; // error (or anything unexpected) → allow a re-run
+  });
+}
+
 export async function runDailyPipeline(
   date?: string,
   opts: DailyRunOptions = {},

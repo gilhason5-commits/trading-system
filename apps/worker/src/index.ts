@@ -1,6 +1,7 @@
 import {
   createRunContext,
   getEnv,
+  hasBlockingRunToday,
   pollPrices,
   runDailyPipeline,
   runDigestStage,
@@ -31,7 +32,7 @@ async function maybeRunScrape(): Promise<void> {
   if (israelHm() < SCRAPE_TIME) return;
   const ctx = createRunContext(today());
   const runs = await ctx.repo.listRuns();
-  if (runs.some((r) => r.date === ctx.date && r.status !== "error")) return; // already ran today
+  if (hasBlockingRunToday(runs, ctx.date)) return; // already ran (or a fresh run is in flight)
 
   console.log(`[worker] starting recommendation run for ${ctx.date}`);
   const result = await runDailyPipeline(ctx.date, { skipDigest: true });

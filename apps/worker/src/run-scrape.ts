@@ -1,11 +1,12 @@
-import { createRunContext, runDailyPipeline, today } from "@trading/core";
+import { createRunContext, hasBlockingRunToday, runDailyPipeline, today } from "@trading/core";
 
 // One-shot recommendation run (analysis + scraping + research), for the GitHub
-// Actions schedule. Idempotent guard: skip if today already has a non-error run.
+// Actions schedule. Idempotent guard: skip only if today already has a successful
+// or fresh in-flight run — a crashed/stale `running` row never blocks a retry.
 
 const ctx = createRunContext(today());
 const runs = await ctx.repo.listRuns();
-if (runs.some((r) => r.date === ctx.date && r.status !== "error")) {
+if (hasBlockingRunToday(runs, ctx.date)) {
   console.log(`[scrape] already ran for ${ctx.date}; skipping`);
 } else {
   console.log(`[scrape] starting recommendation run for ${ctx.date}`);
