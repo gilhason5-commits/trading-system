@@ -52,7 +52,16 @@ function buildLongStrength(
   const tech = t.technical_score ?? 0;
   const fund = t.fundamental_score ?? 0;
   const soc = t.social_score ?? 0;
-  const allAngles = tech >= 60 && fund >= 60 && soc >= 60;
+  // A thesis can mature two ways:
+  //  • Momentum — confirmed from all three angles (technical ≥ 60: an active uptrend).
+  //  • Base — a not-broken chart (technical ≥ 45: basing / mild pullback, not a
+  //    downtrend) when the fundamental+social case is genuinely strong. This lets
+  //    the book enter a base BEFORE the breakout instead of only chasing strength
+  //    after the move (the late-momentum trap: requiring tech ≥ 60 means buying
+  //    only once a name already ran).
+  const strongStory = fund >= 60 && soc >= 60 && (fund + soc) / 2 >= 70;
+  const baseEntry = tech >= 45 && strongStory;
+  const allAngles = (tech >= 60 && fund >= 60 && soc >= 60) || baseEntry;
   const reinforceBonus = Math.min(15, t.reinforce_count * 5); // reward real repeated mentions
   let s = conviction + corro + reinforceBonus + analystWeight - bearishToday * 6;
   if (!allAngles) s = Math.min(s, BUY_BAR - 5); // a weak leg keeps it "building"

@@ -41,7 +41,11 @@ const STRATEGY = {
   // chase: cap thesis strength, RSI, and distance above the 20-EMA (in ATRs),
   // and require price to actually sit above the 20-EMA (trend confirmed, not yet
   // stretched). Tighten the volatility stop too — real ATR is now populated.
-  maxBuyStrength: 82, // strength above this = overextended, likely a top
+  // strength above this = crowded/overextended, likely a top. Calibrated to 85:
+  // blocks the week's high-strength losers (MU 100, AMAT 89, CRDO 87) while
+  // letting a genuinely healthy 84 (UNH: RSI 59, above SMA50, ~1.7 ATR ext) pass.
+  // Finer extension is then judged on real RSI / ATR-distance below, not strength.
+  maxBuyStrength: 85,
   maxBuyRsi: 78, // classic overbought — don't enter
   maxAtrExtension: 4, // price > 4 ATRs above the 20-EMA = chasing
   atrStopMult: 2.0, // stop = 2.0×ATR below entry (was 2.5 — sat through big losers)
@@ -49,6 +53,22 @@ const STRATEGY = {
 
 function toUsd(priceNative: number, currency: Currency, usdIls: number): number {
   return currency === "ILS" ? priceNative / usdIls : priceNative;
+}
+
+/**
+ * The buy legs clear when the case is convincing — mirrors the thesis maturation
+ * (see buildLongStrength): full momentum confirmation (technical ≥ 60), OR a
+ * not-broken chart (technical ≥ 45) backed by a genuinely strong fundamental +
+ * social story. Lets the engine actually execute the base entries the thesis now
+ * matures, instead of demanding active momentum (which only confirms late).
+ */
+function legsClear(tr: TrackedRecommendation): boolean {
+  const tech = tr.technical_score ?? 0;
+  const fund = tr.fundamental_score ?? 0;
+  const soc = tr.social_score ?? 0;
+  if (fund < 60 || soc < 60) return false;
+  const strongStory = (fund + soc) / 2 >= 70;
+  return tech >= 60 || (tech >= 45 && strongStory);
 }
 
 /** Round share quantity down; allow fractional only under 1 share isn't useful → whole shares. */
@@ -261,9 +281,8 @@ export async function runAutoTradeStage(ctx: RunContext): Promise<void> {
   let buysLeft = STRATEGY.maxNewBuysPerDay;
 
   // Buy only names whose multi-day LONG thesis has matured past the bar. The
-  // thesis only reaches the bar when convincing from every angle (the weak-leg
-  // cap lives in the thesis stage), so this already encodes "sure from all sides".
-  const f = STRATEGY.componentFloor;
+  // thesis matures via momentum confirmation or a strong-story base (the leg logic
+  // lives in the thesis stage and in legsClear), so this already encodes "sure".
   const candidates = theses
     .filter((th) => th.direction === "long" && th.status === "building" && th.strength >= BUY_BAR)
     .filter((th) => !heldNow.has(th.ticker.toUpperCase()))
@@ -281,7 +300,7 @@ export async function runAutoTradeStage(ctx: RunContext): Promise<void> {
   const ROTATE_MARGIN = 15;
   const best = candidates[0];
   const bt = best ? convByTicker.get(best.ticker.toUpperCase()) : undefined;
-  const bestLegsOk = !!bt && (bt.technical_score ?? 0) >= f && (bt.fundamental_score ?? 0) >= f && (bt.social_score ?? 0) >= f;
+  const bestLegsOk = !!bt && legsClear(bt);
   const bestConv = bt?.conviction ?? best?.strength ?? 0;
   while (best && bestLegsOk && buysLeft > 0) {
     const accountValue = cash + (await holdingsUsdOf());
@@ -315,29 +334,31 @@ export async function runAutoTradeStage(ctx: RunContext): Promise<void> {
     if (slots <= 0 || buysLeft <= 0) break;
     const key = th.ticker.toUpperCase();
     const t = convByTicker.get(key);
-    // Final approval gate: a buy requires the final technical read to confirm
-    // (technical ≥ floor) — and fundamental + social too — at execution time.
+    // Final approval gate: legs must clear (momentum confirmation, or a strong-story
+    // base) at execution time.
     if (!t) continue;
-    if ((t.technical_score ?? 0) < f) continue; // technical doesn't confirm → no trade
-    if ((t.fundamental_score ?? 0) < f || (t.social_score ?? 0) < f) continue;
+    if (!legsClear(t)) continue; // legs don't clear (momentum or strong-story base) → no trade
     const market = marketByTicker.get(key) ?? "US";
     const ep = await execPrice(t.ticker, market);
     if (!ep) continue;
 
-    // ── Anti-extension gate — don't chase a name that already ran ────────────
+    // ── Entry-quality gate — a healthy band: not extended, not broken ────────
     // Fetch the chart read once (reused below for the stop). Skip (and log why,
-    // so the decision is auditable) when the entry would be a late-momentum top.
+    // so the decision is auditable) when the entry is either a late-momentum top
+    // (overbought / stretched far above the 20-EMA) OR a broken downtrend (below
+    // the 50-day). The middle — a base above the 50-day — is exactly what we want.
     const tech = await ctx.md.getTechnicals(t.ticker, market).catch(() => null);
     const rsiNow = tech?.rsi ?? 50;
     const atr = tech?.atr ?? 0;
     const ema20 = tech?.ema20 ?? 0;
+    const sma50 = tech?.sma50 ?? 0;
     const atrExt = atr > 0 && ema20 > 0 ? (ep.price - ema20) / atr : 0;
     let skip: string | null = null;
     if (th.strength > STRATEGY.maxBuyStrength)
       skip = `עוצמה ${th.strength} > ${STRATEGY.maxBuyStrength} (מתוח/overextended)`;
     else if (rsiNow > STRATEGY.maxBuyRsi) skip = `RSI ${Math.round(rsiNow)} > ${STRATEGY.maxBuyRsi} (קנוי-יתר)`;
-    else if (ema20 > 0 && ep.price < ema20)
-      skip = `מתחת ל-EMA20 (${round2(ep.price)} < ${round2(ema20)}) — לא מאשר מגמה`;
+    else if (sma50 > 0 && ep.price < sma50)
+      skip = `מתחת ל-SMA50 (${round2(ep.price)} < ${round2(sma50)}) — מגמת ירידה שבורה`;
     else if (atrExt > STRATEGY.maxAtrExtension)
       skip = `מתוח ${atrExt.toFixed(1)} ATR מעל EMA20 (> ${STRATEGY.maxAtrExtension}) — רודף מומנטום`;
     if (skip) {
@@ -411,7 +432,7 @@ export async function runAutoTradeStage(ctx: RunContext): Promise<void> {
       conviction: t.conviction ?? null,
       reason:
         marketTag +
-        `קנייה: תזה הבשילה (עוצמה ${th.strength}/${BUY_BAR}, ${th.days} ימי בנייה) · קונביקשן ${t.conviction}% (כל הרכיבים מעל ${f})` +
+        `קנייה: תזה הבשילה (עוצמה ${th.strength}/${BUY_BAR}, ${th.days} ימי בנייה) · קונביקשן ${t.conviction}% · ${(t.technical_score ?? 0) >= 60 ? "אישור מומנטום" : "כניסת בסיס (פונדמנטל+חברתי חזקים)"}` +
         ` · ט ${t.technical_score ?? "—"}/פ ${t.fundamental_score ?? "—"}/ח ${t.social_score ?? "—"}` +
         (t.reinforce_count ? ` · חוזק ×${t.reinforce_count}` : "") +
         ` · כניסה לא מתוחה (RSI ${Math.round(rsiNow)}${atr > 0 && ema20 > 0 ? `, ${atrExt.toFixed(1)} ATR מעל EMA20` : ""})` +
